@@ -92,16 +92,9 @@ const elements = {
     countInBtn: document.getElementById('countInBtn'),
     metronome: document.getElementById('metronome'),
 
-    // Now Playing & Analysis (preview display)
-    nowPlaying: document.getElementById('nowPlaying'),
+    // Unified now-playing content area (replaces previewInfo, nowPlaying, processingProgress)
+    nowPlayingContent: document.getElementById('nowPlayingContent'),
     nowPlayingHeader: document.getElementById('nowPlayingHeader'),
-    // Preview info in now-playing-card (shows when uploadPanel is folded)
-    previewInfo: document.getElementById('previewInfo'),
-    // Processing progress in now-playing-card
-    processingProgress: document.getElementById('processingProgress'),
-    processingText: document.getElementById('processingText'),
-    processingFill: document.getElementById('processingFill'),
-    processingDetails: document.getElementById('processingDetails'),
     bpmBadge: document.getElementById('bpmBadge'),
     bpmValue: document.querySelector('.bpm-value'),
     vizMode: document.getElementById('vizMode'),
@@ -938,8 +931,8 @@ async function clearSelection() {
     if (elements.totalTime) elements.totalTime.textContent = '0:00';
     if (elements.seekBar) elements.seekBar.value = 0;
     if (elements.currentTime) elements.currentTime.textContent = '0:00';
-    if (elements.nowPlaying) {
-        elements.nowPlaying.innerHTML = '<div class="placeholder-text">选择音轨开始播放</div>';
+    if (elements.nowPlayingContent) {
+        elements.nowPlayingContent.innerHTML = '<div class="placeholder-text">选择音轨开始播放</div>';
     }
 
     // Stop any ongoing visualization
@@ -1900,56 +1893,34 @@ function updateTotalTimeForSelectedTracks() {
 }
 
 /**
- * Update the now-playing display to show all selected tracks with icons
+ * Update the now-playing display to show all selected tracks with icons (minimal design)
  */
 function updateNowPlayingDisplay() {
-    if (!elements.nowPlaying) return;
+    if (!elements.nowPlayingContent) return;
 
     if (state.selectedTracks.length === 0) {
-        elements.nowPlaying.innerHTML = '<div class="placeholder-text">选择音轨开始播放</div>';
+        elements.nowPlayingContent.innerHTML = '<div class="placeholder-text">选择音轨开始播放</div>';
         return;
     }
 
     // Group tracks by type for cleaner display
-    const groupedTracks = state.selectedTracks.reduce((acc, t, index) => {
+    const groupedTracks = state.selectedTracks.reduce((acc, t) => {
         const info = getTrackIconInfo(t.track.name);
         if (!acc[info.class]) {
-            acc[info.class] = {
-                icon: info.icon,
-                class: info.class,
-                displayName: info.displayName,
-                count: 0,
-                totalDuration: 0
-            };
+            acc[info.class] = { icon: info.icon, class: info.class, displayName: info.displayName, count: 0 };
         }
         acc[info.class].count++;
-        acc[info.class].totalDuration += t.track.duration;
         return acc;
     }, {});
 
-    // Create track type badges
-    const trackTypeBadges = Object.values(groupedTracks)
-        .map(g => `
-            <span class="track-icon-badge ${g.class}" style="cursor: default;">
-                <span class="icon">${g.icon}</span>
-                <span class="name">${g.displayName}${g.count > 1 ? ` ×${g.count}` : ''}</span>
-            </span>
-        `)
-        .join('');
+    // Create minimal track type badges
+    const badges = Object.values(groupedTracks)
+        .map(g => `<span class="track-icon-badge ${g.class}"><span class="icon">${g.icon}</span> ${g.displayName}${g.count > 1 ? `×${g.count}` : ''}</span>`)
+        .join(' ');
 
-    const totalDuration = state.selectedTracks.reduce((sum, t) => sum + t.track.duration, 0);
-
-    elements.nowPlaying.innerHTML = `
-        <div class="track-title">
-            ${state.selectedTracks.length > 1 ? '🎵 混合音轨' : '🎵 单曲播放'}
-        </div>
-        <div style="display: flex; align-items: center; gap: var(--space-sm); margin: var(--space-sm) 0;">
-            <span class="track-count-badge">${state.selectedTracks.length}</span>
-            <span style="color: var(--text-muted); font-size: 0.9rem;">个音轨</span>
-            <span style="color: var(--text-secondary); font-family: var(--font-mono); font-weight: 600;">${formatTime(totalDuration)}</span>
-        </div>
-        <div style="display: flex; flex-wrap: wrap; gap: var(--space-xs); margin-top: var(--space-md);">
-            ${trackTypeBadges}
+    elements.nowPlayingContent.innerHTML = `
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center;">
+            ${badges}
         </div>
     `;
 }
@@ -2498,7 +2469,7 @@ function startMixPlayback() {
             if (drumTrack) trackNames.push(`🥁 ${drumTrack.name}`);
             if (backingTrack) trackNames.push(`🎵 ${backingTrack.name}`);
 
-            elements.nowPlaying.innerHTML = `
+            elements.nowPlayingContent.innerHTML = `
                 <div class="track-title">🎚️ 混音模式</div>
                 <div style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.5rem;">
                     ${trackNames.join('<br>')}
@@ -2711,12 +2682,12 @@ function showFilePreviewFromServer(fileInfo) {
  * This is displayed when uploadPanel is folded
  */
 function showPreviewInNowPlayingCard(fileInfo) {
-    if (!elements.previewInfo) return;
+    if (!elements.nowPlayingContent) return;
 
     const sizeMB = (fileInfo.size / (1024 * 1024)).toFixed(1);
     const extension = fileInfo.name.split('.').pop() || '未知格式';
 
-    elements.previewInfo.innerHTML = `
+    elements.nowPlayingContent.innerHTML = `
         <div class="preview-title">文件已就绪</div>
         <div class="preview-details">
             <div>
@@ -2736,14 +2707,7 @@ function showPreviewInNowPlayingCard(fileInfo) {
                 <span class="detail-value">${extension.toUpperCase()}</span>
             </div>
         </div>
-        <div class="preview-info-note">点击处理按钮以分离音轨 (鼓声/人声/乐器)</div>
     `;
-    elements.previewInfo.classList.remove('hidden');
-
-    // Hide processing progress if visible
-    if (elements.processingProgress) {
-        elements.processingProgress.classList.add('hidden');
-    }
 
     // Update now-playing header
     if (elements.nowPlayingHeader) {
@@ -2763,9 +2727,8 @@ function showPreviewInNowPlayingCard(fileInfo) {
  * Called when CLEAR button is clicked
  */
 function clearPreviewFromNowPlayingCard() {
-    if (!elements.previewInfo) return;
-    elements.previewInfo.innerHTML = '';
-    elements.previewInfo.classList.add('hidden');
+    if (!elements.nowPlayingContent) return;
+    elements.nowPlayingContent.innerHTML = '<div class="placeholder-text">选择音轨开始播放</div>';
 
     // Reset dropzone visual state
     const uploadDropzone = document.querySelector('.upload-dropzone');
@@ -3106,36 +3069,31 @@ function handleProgressUpdate(data) {
  * Show processing progress in now-playing card
  */
 function showProcessingInNowPlayingCard(message, percentage, current, total) {
-    // Hide preview info when processing
-    if (elements.previewInfo) {
-        elements.previewInfo.classList.add('hidden');
-    }
+    if (!elements.nowPlayingContent) return;
 
-    // Show processing progress
-    if (elements.processingProgress) {
-        elements.processingProgress.classList.remove('hidden');
-    }
+    const displayMessage = message || '正在处理...';
+    const progressWidth = percentage !== undefined ? percentage : 0;
+    const details = (current !== undefined && total !== undefined && total > 0)
+        ? `进度: ${current}/${total} (${Math.round((current / total) * 100)}%)`
+        : '';
+
+    elements.nowPlayingContent.innerHTML = `
+        <div class="processing-content">
+            <div style="font-size: 1.25rem; font-weight: 700; color: var(--accent); margin-bottom: 12px;">
+                ⏳ ${displayMessage}
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${progressWidth}%"></div>
+                </div>
+            </div>
+            ${details ? `<div style="margin-top: 8px; font-size: 0.9rem; color: var(--text-secondary);">${details}</div>` : ''}
+        </div>
+    `;
 
     // Update header
     if (elements.nowPlayingHeader) {
         elements.nowPlayingHeader.textContent = '⏳ 分离中...';
-    }
-
-    // Update progress text
-    if (elements.processingText) {
-        elements.processingText.textContent = message || '正在处理...';
-    }
-
-    // Update progress bar
-    if (elements.processingFill && percentage !== undefined) {
-        elements.processingFill.style.width = `${percentage}%`;
-    }
-
-    // Update details (show current/total if available)
-    if (elements.processingDetails && current !== undefined && total !== undefined && total > 0) {
-        elements.processingDetails.textContent = `进度: ${current}/${total} (${Math.round((current / total) * 100)}%)`;
-    } else if (elements.processingDetails) {
-        elements.processingDetails.textContent = '';
     }
 }
 
@@ -3143,10 +3101,10 @@ function showProcessingInNowPlayingCard(message, percentage, current, total) {
  * Hide processing progress and reset now-playing card
  */
 function hideProcessingInNowPlayingCard() {
-    // Hide processing progress
-    if (elements.processingProgress) {
-        elements.processingProgress.classList.add('hidden');
-    }
+    if (!elements.nowPlayingContent) return;
+
+    // Reset to placeholder
+    elements.nowPlayingContent.innerHTML = '<div class="placeholder-text">选择音轨开始播放</div>';
 
     // Reset header
     if (elements.nowPlayingHeader) {
@@ -3170,11 +3128,11 @@ async function updateAfterSeparation() {
     hideProcessingInNowPlayingCard();
 
     // Reset now-playing header and show placeholder
-    if (elements.nowPlayingHeader) {
-        elements.nowPlayingHeader.textContent = '🎶 现在播放';
+    if (elements.nowPlayingContentHeader) {
+        elements.nowPlayingContentHeader.textContent = '🎶 现在播放';
     }
-    if (elements.nowPlaying) {
-        elements.nowPlaying.innerHTML = '<div class="placeholder-text">选择音轨开始播放</div>';
+    if (elements.nowPlayingContent) {
+        elements.nowPlayingContent.innerHTML = '<div class="placeholder-text">选择音轨开始播放</div>';
     }
 
     // Fold upload panel (set uploadVisible to false so panel hides)

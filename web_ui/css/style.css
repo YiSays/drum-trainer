@@ -860,23 +860,6 @@ body {
     font-weight: 700;
 }
 
-.preview-info-note {
-    margin-top: var(--space-md);
-    padding: var(--space-sm) var(--space-md);
-    background: rgba(255, 191, 36, 0.1);
-    border: 1px solid rgba(255, 191, 36, 0.3);
-    border-radius: var(--radius-sm);
-    color: var(--accent);
-    font-size: 0.8rem;
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-}
-
-.preview-info-note::before {
-    content: '💡';
-}
-
 .track-title {
     font-size: 1.5rem;
     font-weight: 700;
@@ -1616,33 +1599,16 @@ body {
 }
 
 /* ============================================
-   Processing Progress in Now-Playing Card
+   Processing Content (Unified Now-Playing Area)
    ============================================ */
 
-.processing-progress {
-    margin-top: var(--space-md);
-    padding: var(--space-lg);
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: var(--radius-md);
-    border-left: 3px solid var(--primary);
+.processing-content {
+    text-align: center;
 }
 
-.processing-progress.hidden {
-    display: none;
-}
-
-.processing-header {
-    margin-bottom: var(--space-sm);
-    font-weight: 600;
-    color: var(--primary);
-    font-size: 1rem;
-}
-
-.processing-details {
-    margin-top: var(--space-sm);
-    font-size: 0.875rem;
-    color: var(--text-secondary);
-    min-height: 1.5em;
+.processing-content .progress-bar-container {
+    margin: var(--space-sm) auto;
+    max-width: 400px;
 }
 
 /* ============================================

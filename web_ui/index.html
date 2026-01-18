@@ -119,7 +119,7 @@
 
             <!-- Right Panel - Player & Controls -->
             <main class="content-area">
-                <!-- Now Playing Card -->
+                <!-- Now Playing Card (simplified - single unified content area) -->
                 <div class="card now-playing-card">
                     <div class="card-header">
                         <h3 id="nowPlayingHeader">🎶 现在播放</h3>
@@ -129,23 +129,9 @@
                         </div>
                     </div>
                     <div class="card-body">
-                        <div id="nowPlaying" class="now-playing-display">
+                        <div id="nowPlayingContent">
+                            <!-- Dynamic content loaded here -->
                             <div class="placeholder-text">选择音轨开始播放</div>
-                        </div>
-                        <!-- Preview Info (shows when uploadPanel is folded) -->
-                        <div id="previewInfo" class="preview-info hidden"></div>
-
-                        <!-- Processing Progress (shows during separation) -->
-                        <div id="processingProgress" class="processing-progress hidden">
-                            <div class="processing-header">
-                                <span id="processingText">准备处理...</span>
-                            </div>
-                            <div class="progress-bar-container">
-                                <div class="progress-bar">
-                                    <div id="processingFill" class="progress-fill" style="width: 0%"></div>
-                                </div>
-                            </div>
-                            <div class="processing-details" id="processingDetails"></div>
                         </div>
                     </div>
                 </div>
