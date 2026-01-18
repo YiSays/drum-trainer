@@ -995,16 +995,52 @@ async function clearSelection() {
 }
 
 /**
- * Update the selected tracks info display
+ * Get track type icon and color class based on track name
+ */
+function getTrackIconInfo(trackName) {
+    const name = trackName.toLowerCase();
+
+    if (name.includes('drum')) {
+        return { icon: '🥁', class: 'drum', displayName: 'Drums' };
+    } else if (name.includes('bass')) {
+        return { icon: '🎸', class: 'bass', displayName: 'Bass' };
+    } else if (name.includes('vocal')) {
+        return { icon: '🎤', class: 'vocals', displayName: 'Vocals' };
+    } else if (name.includes('piano')) {
+        return { icon: '🎹', class: 'piano', displayName: 'Piano' };
+    } else if (name.includes('guitar')) {
+        return { icon: '🎸', class: 'guitar', displayName: 'Guitar' };
+    } else if (name.includes('other')) {
+        return { icon: '🎵', class: 'other', displayName: 'Other' };
+    } else {
+        return { icon: '🎶', class: 'other', displayName: 'Track' };
+    }
+}
+
+/**
+ * Update the selected tracks info display with iconic representation
  */
 function updateSelectedTracksInfo() {
     if (!elements.selectedTracksInfo || !elements.selectedTracksList) return;
 
     if (state.selectedTracks.length > 0) {
         elements.selectedTracksInfo.classList.remove('hidden');
-        elements.selectedTracksList.textContent = state.selectedTracks
-            .map(t => t.track.name)
-            .join(', ');
+
+        // Create iconic badges for each track
+        const badges = state.selectedTracks.map((t, index) => {
+            const info = getTrackIconInfo(t.track.name);
+            const duration = formatTime(t.track.duration);
+
+            return `
+                <span class="track-icon-badge ${info.class}" data-track-index="${index}" title="${t.track.name} (${duration})">
+                    <span class="icon">${info.icon}</span>
+                    <span class="name">${info.displayName}</span>
+                    <span class="remove" onclick="event.stopPropagation(); removeFromSelectedTracks(${index})">×</span>
+                </span>
+            `;
+        }).join('');
+
+        elements.selectedTracksList.innerHTML = badges;
     } else {
         elements.selectedTracksInfo.classList.add('hidden');
     }
@@ -1864,7 +1900,7 @@ function updateTotalTimeForSelectedTracks() {
 }
 
 /**
- * Update the now-playing display to show all selected tracks
+ * Update the now-playing display to show all selected tracks with icons
  */
 function updateNowPlayingDisplay() {
     if (!elements.nowPlaying) return;
@@ -1874,14 +1910,46 @@ function updateNowPlayingDisplay() {
         return;
     }
 
-    const trackList = state.selectedTracks
-        .map(t => `🎵 ${t.track.name} (${formatTime(t.track.duration)})`)
-        .join('<br>');
+    // Group tracks by type for cleaner display
+    const groupedTracks = state.selectedTracks.reduce((acc, t, index) => {
+        const info = getTrackIconInfo(t.track.name);
+        if (!acc[info.class]) {
+            acc[info.class] = {
+                icon: info.icon,
+                class: info.class,
+                displayName: info.displayName,
+                count: 0,
+                totalDuration: 0
+            };
+        }
+        acc[info.class].count++;
+        acc[info.class].totalDuration += t.track.duration;
+        return acc;
+    }, {});
+
+    // Create track type badges
+    const trackTypeBadges = Object.values(groupedTracks)
+        .map(g => `
+            <span class="track-icon-badge ${g.class}" style="cursor: default;">
+                <span class="icon">${g.icon}</span>
+                <span class="name">${g.displayName}${g.count > 1 ? ` ×${g.count}` : ''}</span>
+            </span>
+        `)
+        .join('');
+
+    const totalDuration = state.selectedTracks.reduce((sum, t) => sum + t.track.duration, 0);
 
     elements.nowPlaying.innerHTML = `
-        <div class="track-title">已选择 ${state.selectedTracks.length} 个音轨</div>
-        <div style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.5rem; text-align: left;">
-            ${trackList}
+        <div class="track-title">
+            ${state.selectedTracks.length > 1 ? '🎵 混合音轨' : '🎵 单曲播放'}
+        </div>
+        <div style="display: flex; align-items: center; gap: var(--space-sm); margin: var(--space-sm) 0;">
+            <span class="track-count-badge">${state.selectedTracks.length}</span>
+            <span style="color: var(--text-muted); font-size: 0.9rem;">个音轨</span>
+            <span style="color: var(--text-secondary); font-family: var(--font-mono); font-weight: 600;">${formatTime(totalDuration)}</span>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: var(--space-xs); margin-top: var(--space-md);">
+            ${trackTypeBadges}
         </div>
     `;
 }
@@ -2649,13 +2717,26 @@ function showPreviewInNowPlayingCard(fileInfo) {
     const extension = fileInfo.name.split('.').pop() || '未知格式';
 
     elements.previewInfo.innerHTML = `
-        <div class="preview-title">📋 文件预览</div>
+        <div class="preview-title">文件已就绪</div>
         <div class="preview-details">
-            <div><strong>文件名:</strong> ${fileInfo.name}</div>
-            <div><strong>大小:</strong> ${sizeMB} MB</div>
-            <div><strong>时长:</strong> ${formatTime(fileInfo.duration)}</div>
-            <div><strong>格式:</strong> ${extension.toUpperCase()}</div>
+            <div>
+                <span class="detail-label">文件名</span>
+                <span class="detail-value" title="${fileInfo.name}">${fileInfo.name.length > 20 ? fileInfo.name.substring(0, 20) + '...' : fileInfo.name}</span>
+            </div>
+            <div>
+                <span class="detail-label">文件大小</span>
+                <span class="detail-value">${sizeMB} MB</span>
+            </div>
+            <div>
+                <span class="detail-label">时长</span>
+                <span class="detail-value">${formatTime(fileInfo.duration)}</span>
+            </div>
+            <div>
+                <span class="detail-label">格式</span>
+                <span class="detail-value">${extension.toUpperCase()}</span>
+            </div>
         </div>
+        <div class="preview-info-note">点击处理按钮以分离音轨 (鼓声/人声/乐器)</div>
     `;
     elements.previewInfo.classList.remove('hidden');
 
