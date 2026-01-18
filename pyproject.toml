@@ -1,0 +1,50 @@
+[project]
+name = "drum-trainer"
+version = "0.1.0"
+description = "智能鼓声分离与音乐理解工具 - 优化 Apple Silicon 支持"
+readme = "README.md"
+
+# 支持 Python 3.10-3.12，确保与 PyTorch/Demucs 兼容
+# 2026-01-14: 经调研，Demucs v4.0.1 仍是 SOTA，详见 RESEARCH_NOTES.md
+requires-python = ">=3.10,<3.13"
+
+dependencies = [
+    # 音频处理核心
+    "librosa>=0.10.1",
+    "soundfile>=0.12.1",
+    "numpy>=1.24.3",
+    "scipy>=1.11.0",
+    # YouTube 下载
+    "yt-dlp>=2025.1.15",
+    # AI/机器学习 (Apple Silicon 兼容)
+    # torch 2.4.x+ 支持 Python 3.12 + MPS (Metal Performance Shaders)
+    # 2.5.1 是当前稳定版本，性能优化良好
+    "torch>=2.4.0,<2.6.0",
+    "torchaudio>=2.4.0,<2.6.0",
+    # Demucs v4.0.1 - 经调研仍为当前最佳分离模型
+    # GitHub: 已归档但代码稳定，SDR 9.2dB (SOTA)
+    # Apple Silicon: 完美支持 MPS 加速
+    "demucs @ git+https://github.com/facebookresearch/demucs.git@v4.0.1",
+    # API 服务
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "python-multipart>=0.0.6",
+    "pydantic>=2.5.0",
+    # 工具库
+    "click>=8.1.7",
+    "tqdm>=4.66.1",
+    "joblib>=1.3.2",
+    "matplotlib>=3.10.8",
+    "httpx>=0.28.1",
+]
+
+[project.scripts]
+drum-trainer = "drum_trainer.cli:main"
+
+[tool.hatch.metadata]
+# 允许直接从Git引用依赖
+allow-direct-references = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

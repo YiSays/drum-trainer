@@ -1,0 +1,120 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+.migrate.sh
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/generated_plugin_registrants.swift
+**/ios/Flutter/Generated.xcconfig
+**/ios/Runner/GeneratedPluginRegistrant.*
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+/build/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place .idea directories in all Flutter project directories
+.idea/
+
+# VS Code will place .vscode directories in all Flutter project directories
+.vscode/
+
+# Generated files
+.dart_tool/
+.android/
+.ios/
+.web/
+bin/
+coverage/
+test_coverage/
+test/fake_data/
+
+# IDE files
+*.swp
+*.swo
+*~
+*.iml
+*.ipr
+*.iws
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+
+# Windows
+Thumbs.db
+
+# Coverage
+coverage/
+.lcov
+
+# Environment
+.env
+.env.local
+.env.development
+.env.production
+
+# Web build output
+build/web/
+
+# Android
+android/app/build/
+android/.gradle/
+android/gradle/
+android/gradlew
+android/gradlew.bat
+
+# iOS
+ios/Pods/
+ios/Podfile.lock
+ios/Runner.xcworkspace/
+ios/.symlinks/
+ios/xcuserdata/
+ios/xcshareddata/
+
+# Android Studio
+android/.idea/
+android/app/src/main/assets/
+
+# Firebase
+.google-services.json
+
+# Key stores
+*.jks
+*.keystore
+*.p12
+*.pfx
+
+# Lock files
+pubspec.lock
+package-lock.json
+yarn.lock
+
+# Temporary files
+*.tmp
+*.temp

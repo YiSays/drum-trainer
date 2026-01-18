@@ -1,0 +1,76 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.env
+
+# uv
+uv.lock
+
+# PyTorch model cache
+*.pkl
+*.pth
+*.pt
+
+# Storage
+storage/temp/*
+storage/generated/*
+storage/models/*
+!storage/temp/.gitkeep
+!storage/generated/.gitkeep
+!storage/models/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Test output - 仅保留核心测试音频
+test_output/analysis_report.json
+test_output/generated_drums.json
+test_output/original_*.wav
+test_output/rhythm_info.json
+test_output/generated_drums.wav
+
+# Separation test dirs - 仅保留 separation_180hz
+separation_original/
+separation_250hz/
+separation_test/
+diagnosis_output/
+
+# Obsolete test scripts
+diagnose_drums.py
+verify_fix.py
+test_fix.py
+test_full_workflow.py
+test_install.py
+test_real_audio.py
+test_simple.py
+
+# Obsolete documentation
+FIX_SUMMARY.md
+PLAN_SUMMARY.md
+PROJECT_SUMMARY.md
+RESEARCH_NOTES.md
+STATUS_SUMMARY.md
+START_HERE.md
