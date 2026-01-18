@@ -1019,13 +1019,13 @@ function updateSelectedTracksInfo() {
     if (state.selectedTracks.length > 0) {
         elements.selectedTracksInfo.classList.remove('hidden');
 
-        // Create iconic badges for each track
+        // Create iconic badges for each track (interactive with remove button)
         const badges = state.selectedTracks.map((t, index) => {
             const info = getTrackIconInfo(t.track.name);
             const duration = formatTime(t.track.duration);
 
             return `
-                <span class="track-icon-badge ${info.class}" data-track-index="${index}" title="${t.track.name} (${duration})">
+                <span class="track-icon-badge ${info.class} interactive" data-track-index="${index}" title="${t.track.name} (${duration})">
                     <span class="icon">${info.icon}</span>
                     <span class="name">${info.displayName}</span>
                     <span class="remove" onclick="event.stopPropagation(); removeFromSelectedTracks(${index})">×</span>

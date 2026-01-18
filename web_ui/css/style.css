@@ -1083,8 +1083,8 @@ body {
 .track-icon-badge {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-xs);
-    padding: var(--space-xs) var(--space-sm);
+    gap: 4px;
+    padding: 4px 10px;
     border-radius: var(--radius-full);
     font-size: 0.85rem;
     font-weight: 600;
@@ -1092,11 +1092,15 @@ body {
     border: 1px solid var(--glass-border);
     white-space: nowrap;
     transition: all var(--transition-base);
-    cursor: pointer;
     position: relative;
 }
 
-.track-icon-badge:hover {
+/* Interactive badge (in track list with remove button) */
+.track-icon-badge.interactive {
+    cursor: pointer;
+}
+
+.track-icon-badge.interactive:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
@@ -1110,13 +1114,14 @@ body {
 }
 
 .track-icon-badge .remove {
-    margin-left: var(--space-xs);
+    margin-left: 4px;
     opacity: 0.6;
     font-size: 0.8rem;
     transition: opacity var(--transition-fast);
+    cursor: pointer;
 }
 
-.track-icon-badge:hover .remove {
+.track-icon-badge.interactive:hover .remove {
     opacity: 1;
     color: var(--error);
 }
