@@ -1,6 +1,12 @@
 /**
  * Drum Trainer Web App - Modern JavaScript Controller
  * Handles API communication, audio playback, and UI interactions
+ *
+ * Version: 1.1.0 - Fixed YouTube download flow and original file playback
+ * Version: 1.1.1 - Added progress display for separation and seek bar support for preview
+ * Version: 1.2.0 - Consolidated processCard into now-playing-card for unified UX
+ * Version: 1.2.1 - Fixed "Separate" button disappearing during preview playback
+ * Version: 1.2.2 - Keep original file for playback during separation (copy instead of move)
  */
 
 // Detect API base URL dynamically
@@ -39,6 +45,9 @@ const elements = {
     // Track List
     trackList: document.getElementById('trackList'),
 
+    // Screen Reader Announcements
+    srAnnounce: document.getElementById('srAnnounce'),
+
     // Buttons
     refreshBtn: document.getElementById('refreshBtn'),
     clearBtn: document.getElementById('clearBtn'),
@@ -54,14 +63,8 @@ const elements = {
     progressPercent: document.getElementById('progressPercent'),
     progressFill: document.querySelector('.progress-fill'),
 
-    // File Preview Info
-    selectFileSection: document.querySelector('.select-file-section'),
-    filePreview: document.getElementById('filePreview'),
+    // Process Card (shown after upload)
     processCard: document.getElementById('processCard'),
-    previewFileName: document.getElementById('previewFileName'),
-    previewFileSize: document.getElementById('previewFileSize'),
-    previewFileDuration: document.getElementById('previewFileDuration'),
-    previewFileType: document.getElementById('previewFileType'),
     cancelUploadBtn: document.getElementById('cancelUploadBtn'),
     confirmUploadBtn: document.getElementById('confirmUploadBtn'),
 
@@ -90,7 +93,9 @@ const elements = {
 
     // Practice Mode
     countInBtn: document.getElementById('countInBtn'),
-    metronome: document.getElementById('metronome'),
+    metronomeVisual: document.getElementById('metronomeVisual'),
+    metronomeStatus: document.getElementById('metronomeStatus'),
+    metronomeBpm: document.getElementById('metronomeBpm'),
 
     // Unified now-playing content area (replaces previewInfo, nowPlaying, processingProgress)
     nowPlayingContent: document.getElementById('nowPlayingContent'),
@@ -112,21 +117,6 @@ const elements = {
 
     // Audio Elements
     audioPlayer: document.getElementById('audioPlayer'),
-    mixDrumPlayer: document.getElementById('mixDrumPlayer'),
-    mixBackingPlayer: document.getElementById('mixBackingPlayer'),
-
-    // Mix Mode
-    drumTrackSelect: document.getElementById('drumTrackSelect'),
-    backingTrackSelect: document.getElementById('backingTrackSelect'),
-    drumVolume: document.getElementById('drumVolume'),
-    drumVolValue: document.getElementById('drumVolValue'),
-    backingVolume: document.getElementById('backingVolume'),
-    backingVolValue: document.getElementById('backingVolValue'),
-    mixPlayBtn: document.getElementById('mixPlayBtn'),
-    mixStopBtn: document.getElementById('mixStopBtn'),
-    mixSeekBar: document.getElementById('mixSeekBar'),
-    mixCurrentTime: document.getElementById('mixCurrentTime'),
-    mixTotalTime: document.getElementById('mixTotalTime'),
 
     // Toast
     toast: document.getElementById('toast'),
@@ -285,34 +275,38 @@ function setupEventListeners() {
     if (elements.cancelUploadBtn) {
         elements.cancelUploadBtn.addEventListener('click', cancelFilePreview);
     }
-    if (elements.confirmUploadBtn) {
-        // Use unified handler that checks button state
-        elements.confirmUploadBtn.addEventListener('click', handleConfirmButtonClick);
-    }
+    // Note: confirmUploadBtn is no longer used - Process button is now in now-playing card
 
     // Drag and drop
     const dropzone = document.querySelector('.upload-dropzone');
     if (dropzone) {
         dropzone.addEventListener('dragover', (e) => {
             e.preventDefault();
-            dropzone.style.borderColor = 'var(--primary)';
-            dropzone.style.background = 'rgba(139, 92, 246, 0.1)';
+            dropzone.classList.add('dragover');
         });
 
         dropzone.addEventListener('dragleave', (e) => {
             e.preventDefault();
-            dropzone.style.borderColor = '';
-            dropzone.style.background = '';
+            dropzone.classList.remove('dragover');
         });
 
         dropzone.addEventListener('drop', (e) => {
             e.preventDefault();
-            dropzone.style.borderColor = '';
-            dropzone.style.background = '';
+            dropzone.classList.remove('dragover');
 
             const files = e.dataTransfer.files;
             if (files.length > 0) {
                 handleFileSelect({ target: { files } });
+            }
+        });
+
+        // Keyboard accessibility for dropzone (Enter or Space to open file picker)
+        dropzone.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (!dropzone.classList.contains('disabled') && elements.fileInput) {
+                    elements.fileInput.click();
+                }
             }
         });
     }
@@ -400,50 +394,6 @@ function setupEventListeners() {
             console.error('Audio error:', e);
             showToast('音频加载失败', 'error');
         });
-    }
-
-    // Mix mode events
-    if (elements.drumVolume) {
-        elements.drumVolume.addEventListener('input', (e) => {
-            const value = e.target.value;
-            if (elements.mixDrumPlayer) {
-                elements.mixDrumPlayer.volume = value / 100;
-            }
-            elements.drumVolValue.textContent = `${value}%`;
-        });
-    }
-
-    if (elements.backingVolume) {
-        elements.backingVolume.addEventListener('input', (e) => {
-            const value = e.target.value;
-            if (elements.mixBackingPlayer) {
-                elements.mixBackingPlayer.volume = value / 100;
-            }
-            elements.backingVolValue.textContent = `${value}%`;
-        });
-    }
-
-    if (elements.mixPlayBtn) {
-        elements.mixPlayBtn.addEventListener('click', startMixPlayback);
-    }
-
-    if (elements.mixStopBtn) {
-        elements.mixStopBtn.addEventListener('click', stopMixPlayback);
-    }
-
-    // Mix seek bar
-    if (elements.mixSeekBar) {
-        elements.mixSeekBar.addEventListener('input', seekMix);
-    }
-
-    // Mix player time update events
-    if (elements.mixDrumPlayer) {
-        elements.mixDrumPlayer.addEventListener('timeupdate', updateMixProgress);
-        elements.mixDrumPlayer.addEventListener('loadedmetadata', updateMixDuration);
-    }
-    if (elements.mixBackingPlayer) {
-        elements.mixBackingPlayer.addEventListener('timeupdate', updateMixProgress);
-        elements.mixBackingPlayer.addEventListener('loadedmetadata', updateMixDuration);
     }
 }
 
@@ -566,6 +516,25 @@ function updateApiStatus(status, text) {
 }
 
 /**
+ * Show skeleton loading state for track list
+ */
+function showTrackSkeletonLoading(count = 3) {
+    const skeletons = [];
+    for (let i = 0; i < count; i++) {
+        skeletons.push(`
+            <div class="skeleton-track" style="animation: fadeIn 0.3s ease forwards; animation-delay: ${i * 50}ms;">
+                <div class="skeleton-icon"></div>
+                <div class="skeleton-info">
+                    <div class="skeleton-line" style="width: 70%;"></div>
+                    <div class="skeleton-line short"></div>
+                </div>
+            </div>
+        `);
+    }
+    elements.trackList.innerHTML = skeletons.join('');
+}
+
+/**
  * Load Tracks from API
  * @param {Object} options - Options for loading tracks
  * @param {boolean} options.showAddedMessage - Show toast indicating tracks were added
@@ -577,13 +546,8 @@ async function loadTracks(options = {}) {
         return;
     }
 
-    // Show loading state
-    elements.trackList.innerHTML = `
-        <div class="empty-state">
-            <div class="empty-icon">⏳</div>
-            <h3>正在加载音轨...</h3>
-        </div>
-    `;
+    // Show skeleton loading state
+    showTrackSkeletonLoading(3);
 
     try {
         console.log('Fetching tracks from:', `${API_BASE_URL}/tracks/list`);
@@ -616,8 +580,7 @@ async function loadTracks(options = {}) {
         }
 
         renderTrackList(data);
-        // Update mix select dropdowns and enable controls
-        updateMixSelects(data);
+        // Enable player controls
         enablePlayerControls(true);
 
         // Bug Fix #4: Show context-specific message
@@ -655,9 +618,16 @@ function renderTrackList(tracks) {
 
     tracks.forEach((track, index) => {
         const trackCard = document.createElement('div');
-        trackCard.className = 'track-card fade-in';
+
+        // Get track type info for styling
+        const trackInfo = getTrackIconInfo(track.name);
+
+        // Build base classes with type-specific styling
+        let cardClasses = `track-card fade-in ${trackInfo.class}`;
+        trackCard.className = cardClasses;
         trackCard.style.animationDelay = `${index * 0.05}s`;
         trackCard.dataset.index = index;
+        trackCard.dataset.type = trackInfo.class;
 
         // Check if this track is currently selected (in selectedTracks array)
         const isSelected = state.selectedTracks.some(t => t.track.name === track.name);
@@ -668,12 +638,8 @@ function renderTrackList(tracks) {
         const duration = formatTime(track.duration);
         const sizeMB = (track.size / (1024 * 1024)).toFixed(1);
 
-        // Determine icon based on track name
-        let icon = '🎵';
-        if (track.name.toLowerCase().includes('drum')) icon = '🥁';
-        else if (track.name.toLowerCase().includes('bass')) icon = '🎸';
-        else if (track.name.toLowerCase().includes('vocal')) icon = '🎤';
-        else if (track.name.toLowerCase().includes('mixed')) icon = '🎶';
+        // Use the icon from track info
+        const icon = trackInfo.icon;
 
         // Get stored volume or default to 50
         const storedVolume = state.trackVolumes[track.name] ?? 50;
@@ -959,20 +925,13 @@ async function clearSelection() {
         elements.uploadProgress.classList.add('hidden');
     }
 
-    // Show select file section (upload area)
-    const selectFileSection = document.querySelector('.select-file-section');
+    // Show upload dropzone (upload area)
     const uploadDropzone = document.querySelector('.upload-dropzone');
-    if (selectFileSection) selectFileSection.classList.remove('hidden');
     if (uploadDropzone) uploadDropzone.classList.remove('hidden');
 
     // Hide process card
     if (elements.processCard) {
         elements.processCard.classList.add('hidden');
-    }
-
-    // Hide preview panel (legacy)
-    if (elements.filePreview) {
-        elements.filePreview.classList.add('hidden');
     }
 
     // Remove processing state from upload panel
@@ -1189,6 +1148,12 @@ function stopAllAudio() {
         audio.currentTime = 0;
         audio.remove();  // Remove audio element to allow fresh start on next play
     });
+
+    // Also stop original audio player if exists
+    if (window.originalAudioPlayer) {
+        window.originalAudioPlayer.pause();
+        window.originalAudioPlayer.currentTime = 0;
+    }
 }
 
 /**
@@ -1285,6 +1250,19 @@ function play() {
     console.log('Selected tracks:', state.selectedTracks.map(t => t.track.name));
     console.log('Is already playing:', state.isPlaying);
     console.log('Pending seek position:', state.pendingSeekPosition);
+
+    // Check if we're playing an original (non-separated) file
+    if (state.selectedFile && !state.selectedFile.isSeparated) {
+        // Check if we should resume original audio instead of starting fresh
+        if (!state.isPlaying && window.originalAudioPlayer && window.originalAudioPlayer.src) {
+            console.log('Resuming original file playback');
+            window.originalAudioPlayer.play();
+            return;
+        }
+        console.log('Playing original file for quality check');
+        playOriginalFile();
+        return;
+    }
 
     // Check if we should resume instead of starting fresh
     // If there are existing audio elements and we're not currently playing, resume
@@ -1509,6 +1487,151 @@ function play() {
 }
 
 /**
+ * Play original (non-separated) file for quality check
+ */
+function playOriginalFile() {
+    if (!state.selectedFile || !state.selectedFile.name) {
+        showToast('未找到音频文件', 'error');
+        return;
+    }
+
+    if (!state.apiConnected) {
+        showToast('API 未连接', 'error');
+        return;
+    }
+
+    const filename = state.selectedFile.name;
+    const audioUrl = `${API_BASE_URL}/tracks/audio/original/${encodeURIComponent(filename)}`;
+
+    // Use existing audio element or create new one
+    if (!window.originalAudioPlayer) {
+        window.originalAudioPlayer = new Audio();
+        window.originalAudioPlayer.dataset.track = 'original';
+    }
+
+    // Stop any currently playing audio
+    if (window.originalAudioPlayer) {
+        window.originalAudioPlayer.pause();
+    }
+
+    // Stop any separated track playback
+    const existingSeparatedAudio = document.querySelectorAll('audio[data-track]:not([data-track="original"])');
+    existingSeparatedAudio.forEach(audio => audio.pause());
+
+    window.originalAudioPlayer.src = audioUrl;
+
+    // Connect to Web Audio API analyser for waveform visualization
+    initAudioContext();
+    connectAudioToAnalyser(window.originalAudioPlayer);
+
+    // Set up event listeners for progress tracking and state updates
+    window.originalAudioPlayer.removeEventListener('timeupdate', handleOriginalTimeUpdate);
+    window.originalAudioPlayer.removeEventListener('loadedmetadata', handleOriginalMetadataLoaded);
+    window.originalAudioPlayer.removeEventListener('play', handleOriginalPlay);
+    window.originalAudioPlayer.removeEventListener('pause', handleOriginalPause);
+    window.originalAudioPlayer.removeEventListener('ended', handleOriginalEnded);
+
+    window.originalAudioPlayer.addEventListener('timeupdate', handleOriginalTimeUpdate);
+    window.originalAudioPlayer.addEventListener('loadedmetadata', handleOriginalMetadataLoaded);
+    window.originalAudioPlayer.addEventListener('play', handleOriginalPlay);
+    window.originalAudioPlayer.addEventListener('pause', handleOriginalPause);
+    window.originalAudioPlayer.addEventListener('ended', handleOriginalEnded);
+
+    window.originalAudioPlayer.onerror = (err) => {
+        console.error('Play error:', err);
+        showToast('播放失败: ' + err.message, 'error');
+    };
+
+    // Note: We intentionally do NOT update the now-playing-card UI
+    // This allows users to click play and wait for separation without
+    // the UI changing, so they can listen while processing happens in background
+
+    window.originalAudioPlayer.play().then(() => {
+        console.log('Playing original file:', filename);
+        showToast('🎵 正在播放预览', 'info');
+    }).catch(err => {
+        console.error('Play error:', err);
+        showToast('播放失败: ' + err.message, 'error');
+    });
+}
+
+/**
+ * Handle timeupdate for original file player
+ */
+function handleOriginalTimeUpdate() {
+    if (!window.originalAudioPlayer) return;
+
+    const audio = window.originalAudioPlayer;
+    if (audio.duration && !isNaN(audio.duration)) {
+        const progress = (audio.currentTime / audio.duration) * 100;
+        if (elements.seekBar) elements.seekBar.value = progress;
+        if (elements.currentTime) {
+            elements.currentTime.textContent = formatTime(audio.currentTime);
+        }
+        if (elements.totalTime) {
+            elements.totalTime.textContent = formatTime(audio.duration);
+        }
+    }
+}
+
+/**
+ * Handle loadedmetadata for original file player
+ */
+function handleOriginalMetadataLoaded() {
+    if (!window.originalAudioPlayer || !window.originalAudioPlayer.duration) return;
+    const duration = window.originalAudioPlayer.duration;
+    if (elements.totalTime) {
+        elements.totalTime.textContent = formatTime(duration);
+    }
+    console.log('Original file metadata loaded:', duration, 'seconds');
+}
+
+/**
+ * Handle play event for original file player
+ */
+function handleOriginalPlay() {
+    state.isPlaying = true;
+    updatePlayState();
+    startRealtimeVisualization();
+    // Note: We intentionally do NOT update now-playing-card
+    // Users can keep listening while waiting for separation
+}
+
+/**
+ * Handle pause event for original file player
+ */
+function handleOriginalPause() {
+    // Check if all audio elements (including original) are paused
+    const allAudio = document.querySelectorAll('audio[data-track]');
+    let allPaused = true;
+    for (const audio of allAudio) {
+        if (!audio.paused) {
+            allPaused = false;
+            break;
+        }
+    }
+    // Also check original audio player
+    if (window.originalAudioPlayer && !window.originalAudioPlayer.paused) {
+        allPaused = false;
+    }
+
+    if (allPaused) {
+        state.isPlaying = false;
+        updatePlayState();
+        stopRealtimeVisualization();
+    }
+}
+
+/**
+ * Handle ended event for original file player
+ */
+function handleOriginalEnded() {
+    state.isPlaying = false;
+    updatePlayState();
+    stopRealtimeVisualization();
+}
+
+/**
  * Helper function to actually start playback
  */
 function startPlayback(audioElements) {
@@ -1571,6 +1694,12 @@ function stopPeriodicSync() {
 function pause() {
     console.log('=== pause() called ===');
     pauseAllAudio();
+
+    // Also pause original audio player if exists
+    if (window.originalAudioPlayer && !window.originalAudioPlayer.paused) {
+        window.originalAudioPlayer.pause();
+    }
+
     state.isPlaying = false;
     updatePlayState();
     stopRealtimeVisualization();
@@ -1675,6 +1804,7 @@ function stop() {
     updatePlayState();
     stopRealtimeVisualization();
     stopPeriodicSync();
+    resetVisualMetronome();
     showToast('已停止', 'info');
 }
 
@@ -1688,6 +1818,20 @@ function seek() {
 
     const seekPercent = elements.seekBar.value;
     console.log('Seek bar value:', seekPercent);
+
+    // Handle seek for original file preview (when state.selectedFile exists but not separated)
+    if (state.selectedFile && !state.selectedFile.isSeparated) {
+        if (!window.originalAudioPlayer || !window.originalAudioPlayer.duration) {
+            console.log('Original audio player not ready yet');
+            return;
+        }
+
+        const seekTime = (seekPercent / 100) * window.originalAudioPlayer.duration;
+        console.log(`Seeking original file to: ${seekTime}s (${seekPercent}%)`);
+
+        window.originalAudioPlayer.currentTime = seekTime;
+        return;
+    }
 
     // If no tracks selected yet, store the seek position for later
     if (state.selectedTracks.length === 0) {
@@ -1802,20 +1946,32 @@ function updateProgress() {
 
     let mainAudio = null;
 
-    // Prefer a playing audio element with duration
-    for (const audio of allAudio) {
-        if (!audio.paused && audio.duration && !isNaN(audio.duration)) {
-            mainAudio = audio;
-            break;
+    // First, check if original audio player is playing
+    if (window.originalAudioPlayer && !window.originalAudioPlayer.paused &&
+        window.originalAudioPlayer.duration && !isNaN(window.originalAudioPlayer.duration)) {
+        mainAudio = window.originalAudioPlayer;
+    }
+
+    // Then prefer a playing separated track audio element with duration
+    if (!mainAudio) {
+        for (const audio of allAudio) {
+            if (!audio.paused && audio.duration && !isNaN(audio.duration)) {
+                mainAudio = audio;
+                break;
+            }
         }
     }
 
-    // Fallback: any audio element with duration
+    // Fallback: any audio element (including original) with duration
     if (!mainAudio) {
-        for (const audio of allAudio) {
-            if (audio.duration && !isNaN(audio.duration)) {
-                mainAudio = audio;
-                break;
+        if (window.originalAudioPlayer && window.originalAudioPlayer.duration && !isNaN(window.originalAudioPlayer.duration)) {
+            mainAudio = window.originalAudioPlayer;
+        } else {
+            for (const audio of allAudio) {
+                if (audio.duration && !isNaN(audio.duration)) {
+                    mainAudio = audio;
+                    break;
+                }
             }
         }
     }
@@ -1851,13 +2007,20 @@ function updateDuration() {
 
     let mainAudio = null;
 
-    // Find an audio element with valid duration
-    for (const audio of allAudio) {
-        console.log(`  Checking ${audio.dataset.track}: duration=${audio.duration}, isNaN=${isNaN(audio.duration)}`);
-        if (audio.duration && !isNaN(audio.duration)) {
-            mainAudio = audio;
-            console.log(`  Found valid duration on ${audio.dataset.track}: ${audio.duration}`);
-            break;
+    // First check original audio player
+    if (window.originalAudioPlayer && window.originalAudioPlayer.duration && !isNaN(window.originalAudioPlayer.duration)) {
+        mainAudio = window.originalAudioPlayer;
+    }
+
+    // Then find a separated track audio element with valid duration
+    if (!mainAudio) {
+        for (const audio of allAudio) {
+            console.log(`  Checking ${audio.dataset.track}: duration=${audio.duration}, isNaN=${isNaN(audio.duration)}`);
+            if (audio.duration && !isNaN(audio.duration)) {
+                mainAudio = audio;
+                console.log(`  Found valid duration on ${audio.dataset.track}: ${audio.duration}`);
+                break;
+            }
         }
     }
 
@@ -1926,62 +2089,6 @@ function updateNowPlayingDisplay() {
 }
 
 /**
- * Seek Mix Playback
- */
-function seekMix() {
-    const targetTime = (elements.mixSeekBar.value / 100) * getMixDuration();
-    // Seek both players to the same time
-    if (elements.mixDrumPlayer) {
-        elements.mixDrumPlayer.currentTime = targetTime;
-    }
-    if (elements.mixBackingPlayer) {
-        elements.mixBackingPlayer.currentTime = targetTime;
-    }
-}
-
-/**
- * Get the duration of the mix (use the longer track)
- */
-function getMixDuration() {
-    let maxDuration = 0;
-    if (elements.mixDrumPlayer && elements.mixDrumPlayer.duration) {
-        maxDuration = Math.max(maxDuration, elements.mixDrumPlayer.duration);
-    }
-    if (elements.mixBackingPlayer && elements.mixBackingPlayer.duration) {
-        maxDuration = Math.max(maxDuration, elements.mixBackingPlayer.duration);
-    }
-    return maxDuration;
-}
-
-/**
- * Update Mix Progress
- */
-function updateMixProgress() {
-    if (!elements.mixDrumPlayer && !elements.mixBackingPlayer) return;
-
-    const duration = getMixDuration();
-    if (duration === 0) return;
-
-    // Use drum player as reference if available, otherwise backing
-    const currentPlayer = elements.mixDrumPlayer || elements.mixBackingPlayer;
-    const currentTime = currentPlayer ? currentPlayer.currentTime : 0;
-
-    const progress = (currentTime / duration) * 100;
-    elements.mixSeekBar.value = progress;
-    elements.mixCurrentTime.textContent = formatTime(currentTime);
-}
-
-/**
- * Update Mix Duration
- */
-function updateMixDuration() {
-    const duration = getMixDuration();
-    if (duration > 0) {
-        elements.mixTotalTime.textContent = formatTime(duration);
-    }
-}
-
-/**
  * Handle Track End
  */
 function handleTrackEnd() {
@@ -2009,6 +2116,9 @@ function updatePlayState() {
         elements.playBtn.style.width = '';
         elements.playBtn.style.height = '';
     }
+
+    // Update metronome status
+    updateMetronomeStatus();
 
     // Stop button: disabled when not playing, enlarge when playing
     if (elements.stopBtn) {
@@ -2054,7 +2164,7 @@ function updatePlayState() {
 }
 
 /**
- * Start Metronome Count-in (4 beats)
+ * Start Metronome Count-in (4 beats) with visual indicator
  */
 function startCountIn() {
     if (state.metronomeInterval) {
@@ -2063,6 +2173,9 @@ function startCountIn() {
 
     let beat = 0;
     const beats = 4;
+
+    // Update metronome status
+    updateMetronomeStatus('counting');
 
     showToast('开始计时... 4拍', 'success');
 
@@ -2091,11 +2204,16 @@ function startCountIn() {
         const isAccent = beat === 1;
 
         playClick(isAccent);
-        elements.metronome.classList.add('beat');
 
-        setTimeout(() => {
-            elements.metronome.classList.remove('beat');
-        }, 100);
+        // Visual metronome animation
+        visualMetronomeBeat(beat, isAccent);
+
+        // Pulse animation on metronome card
+        if (elements.metronomeVisual?.parentElement?.parentElement?.parentElement) {
+            const metronomeCard = elements.metronomeVisual.parentElement.parentElement.parentElement;
+            metronomeCard.classList.add('beat-active');
+            setTimeout(() => metronomeCard.classList.remove('beat-active'), 150);
+        }
 
         showToast(`拍子 ${beat}/${beats}`, 'success');
 
@@ -2103,12 +2221,84 @@ function startCountIn() {
             clearInterval(state.metronomeInterval);
             state.metronomeInterval = null;
 
-            // Auto-play after count-in
+            // Update status after count-in completes
             setTimeout(() => {
+                updateMetronomeStatus('ready');
+                // Auto-play after count-in
                 play();
             }, 200);
         }
     }, 600); // 600ms per beat = 100 BPM
+}
+
+/**
+ * Visual metronome beat indicator
+ * Highlights beat dots in sequence with accent on first beat
+ */
+function visualMetronomeBeat(beat, isAccent = false) {
+    if (!elements.metronomeVisual) return;
+
+    // Get all beat dots
+    const dots = elements.metronomeVisual.querySelectorAll('.beat-dot');
+    if (!dots.length) return;
+
+    // Reset all dots
+    dots.forEach(dot => {
+        dot.classList.remove('active', 'accent', 'pulsing');
+    });
+
+    // Activate current beat (with 1-based indexing)
+    const targetIndex = beat - 1;
+    if (targetIndex >= 0 && targetIndex < dots.length) {
+        const targetDot = dots[targetIndex];
+        targetDot.classList.add('active', 'pulsing');
+        if (isAccent) {
+            targetDot.classList.add('accent');
+        }
+    }
+}
+
+/**
+ * Reset visual metronome
+ */
+function resetVisualMetronome() {
+    if (!elements.metronomeVisual) return;
+
+    const dots = elements.metronomeVisual.querySelectorAll('.beat-dot');
+    dots.forEach(dot => {
+        dot.classList.remove('active', 'accent', 'pulsing');
+    });
+
+    updateMetronomeStatus('ready');
+}
+
+/**
+ * Update metronome status display
+ */
+function updateMetronomeStatus(status = 'ready') {
+    if (!elements.metronomeStatus) return;
+
+    let statusText = '就绪';
+    let bpmText = '-- BPM';
+
+    if (status === 'counting') {
+        statusText = '预备中...';
+    } else if (state.isPlaying && state.selectedTracks.length > 0) {
+        statusText = '播放中';
+        // Try to get BPM from analysis if available
+        const bpmValue = elements.statBpm?.textContent;
+        if (bpmValue && bpmValue !== '--') {
+            bpmText = `${bpmValue} BPM`;
+        }
+    } else if (status === 'ready') {
+        statusText = '就绪';
+    }
+
+    elements.metronomeStatus.textContent = statusText;
+
+    if (elements.metronomeBpm) {
+        elements.metronomeBpm.textContent = bpmText;
+    }
 }
 
 /**
@@ -2376,162 +2566,6 @@ function drawEmptyWaveform() {
 }
 
 /**
- * Update Mix Select Dropdowns
- */
-function updateMixSelects(tracks) {
-    if (!elements.drumTrackSelect || !elements.backingTrackSelect) return;
-
-    const drumOptions = ['<option value="">-- 选择 --</option>'];
-    const backingOptions = ['<option value="">-- 选择 --</option>'];
-
-    tracks.forEach((track, index) => {
-        const isDrum = track.name.toLowerCase().includes('drum');
-        const isBass = track.name.toLowerCase().includes('bass') || track.name.toLowerCase().includes('no_drum');
-
-        if (isDrum) {
-            drumOptions.push(`<option value="${index}">${track.name}</option>`);
-        }
-
-        if (isBass || isDrum) {
-            backingOptions.push(`<option value="${index}">${track.name}</option>`);
-        }
-    });
-
-    elements.drumTrackSelect.innerHTML = drumOptions.join('');
-    elements.backingTrackSelect.innerHTML = backingOptions.join('');
-
-    if (tracks.length > 0 && elements.mixPlayBtn) {
-        elements.mixPlayBtn.disabled = false;
-    }
-
-    // Reset mix seek bar
-    if (elements.mixSeekBar) {
-        elements.mixSeekBar.value = 0;
-        elements.mixCurrentTime.textContent = '0:00';
-        elements.mixTotalTime.textContent = '0:00';
-    }
-}
-
-/**
- * Start Mix Playback
- */
-function startMixPlayback() {
-    const drumIndex = elements.drumTrackSelect?.value;
-    const backingIndex = elements.backingTrackSelect?.value;
-
-    if (!drumIndex && !backingIndex) {
-        showToast('请至少选择一个音轨', 'warning');
-        return;
-    }
-
-    if (!state.apiConnected) {
-        showToast('API 未连接', 'error');
-        return;
-    }
-
-    // Stop current playback
-    stop();
-    stopMixPlayback();
-
-    const drumTrack = drumIndex ? state.tracks[parseInt(drumIndex)] : null;
-    const backingTrack = backingIndex ? state.tracks[parseInt(backingIndex)] : null;
-
-    let loadedCount = 0;
-    const expectedLoads = (drumTrack ? 1 : 0) + (backingTrack ? 1 : 0);
-
-    const onLoaded = () => {
-        loadedCount++;
-        if (loadedCount === expectedLoads) {
-            const startTime = Math.max(
-                elements.mixDrumPlayer.currentTime || 0,
-                elements.mixBackingPlayer.currentTime || 0
-            );
-
-            if (drumTrack) {
-                elements.mixDrumPlayer.currentTime = startTime;
-                elements.mixDrumPlayer.play();
-            }
-            if (backingTrack) {
-                elements.mixBackingPlayer.currentTime = startTime;
-                elements.mixBackingPlayer.play();
-            }
-
-            showToast('🎵 混音播放中...', 'success');
-
-            if (elements.mixPlayBtn) {
-                elements.mixPlayBtn.disabled = true;
-                elements.mixStopBtn.disabled = false;
-                elements.mixSeekBar.disabled = false;
-            }
-
-            // Update now playing
-            const trackNames = [];
-            if (drumTrack) trackNames.push(`🥁 ${drumTrack.name}`);
-            if (backingTrack) trackNames.push(`🎵 ${backingTrack.name}`);
-
-            elements.nowPlayingContent.innerHTML = `
-                <div class="track-title">🎚️ 混音模式</div>
-                <div style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.5rem;">
-                    ${trackNames.join('<br>')}
-                </div>
-            `;
-        }
-    };
-
-    if (drumTrack) {
-        elements.mixDrumPlayer.src = `${API_BASE_URL}/tracks/audio/${drumTrack.name}`;
-        elements.mixDrumPlayer.volume = elements.drumVolume.value / 100;
-        elements.mixDrumPlayer.load();
-        elements.mixDrumPlayer.onloadedmetadata = onLoaded;
-    }
-
-    if (backingTrack) {
-        elements.mixBackingPlayer.src = `${API_BASE_URL}/tracks/audio/${backingTrack.name}`;
-        elements.mixBackingPlayer.volume = elements.backingVolume.value / 100;
-        elements.mixBackingPlayer.load();
-        elements.mixBackingPlayer.onloadedmetadata = onLoaded;
-    }
-
-    // Disable single track controls
-    if (elements.playBtn) elements.playBtn.disabled = true;
-    if (elements.pauseBtn) elements.pauseBtn.disabled = true;
-    if (elements.stopBtn) elements.stopBtn.disabled = true;
-}
-
-/**
- * Stop Mix Playback
- */
-function stopMixPlayback() {
-    if (elements.mixDrumPlayer) {
-        elements.mixDrumPlayer.pause();
-        elements.mixDrumPlayer.currentTime = 0;
-    }
-    if (elements.mixBackingPlayer) {
-        elements.mixBackingPlayer.pause();
-        elements.mixBackingPlayer.currentTime = 0;
-    }
-
-    if (elements.mixPlayBtn) {
-        elements.mixPlayBtn.disabled = false;
-        elements.mixStopBtn.disabled = true;
-    }
-
-    if (elements.mixSeekBar) {
-        elements.mixSeekBar.disabled = true;
-        elements.mixSeekBar.value = 0;
-    }
-    if (elements.mixCurrentTime) elements.mixCurrentTime.textContent = '0:00';
-    if (elements.mixTotalTime) elements.mixTotalTime.textContent = '0:00';
-
-    // Re-enable single track controls
-    if (elements.playBtn) elements.playBtn.disabled = false;
-    if (elements.pauseBtn) elements.pauseBtn.disabled = false;
-    if (elements.stopBtn) elements.stopBtn.disabled = false;
-
-    showToast('混音已停止', 'info');
-}
-
-/**
  * Toggle Upload Panel
  */
 function toggleUploadPanel() {
@@ -2607,8 +2641,8 @@ async function uploadFileForPreview(file) {
     formData.append('file', file);
 
     // Show uploading state in UI
-    const selectFileSection = document.querySelector('.select-file-section');
-    if (selectFileSection) selectFileSection.classList.add('hidden');
+    const uploadDropzone = document.querySelector('.upload-dropzone');
+    if (uploadDropzone) uploadDropzone.classList.add('hidden');
     elements.uploadProgress.classList.remove('hidden');
     updateProgressUI('正在上传...', 20);
 
@@ -2670,48 +2704,74 @@ function showFilePreviewFromServer(fileInfo) {
         elements.uploadProgress.classList.add('hidden');
     }
 
-    // Show preview in now-playing-card instead of in uploadPanel
-    showPreviewInNowPlayingCard(fileInfo);
+    // Hide process card (we're using now-playing card exclusively)
+    if (elements.processCard) {
+        elements.processCard.classList.add('hidden');
+    }
 
-    // Show Process card in uploadPanel
-    showProcessCardInUploadPanel(fileInfo);
+    // Fold upload panel (hide it)
+    if (elements.uploadPanel) {
+        elements.uploadPanel.classList.add('hidden');
+    }
+    state.uploadVisible = false;
+
+    // Show preview in now-playing-card with Process button
+    showPreviewInNowPlayingCard(fileInfo, true);
 }
 
 /**
  * Show preview information in the now-playing-card div
  * This is displayed when uploadPanel is folded
  */
-function showPreviewInNowPlayingCard(fileInfo) {
+function showPreviewInNowPlayingCard(fileInfo, showProcessButton = true) {
     if (!elements.nowPlayingContent) return;
 
     const sizeMB = (fileInfo.size / (1024 * 1024)).toFixed(1);
     const extension = fileInfo.name.split('.').pop() || '未知格式';
 
+    // Determine button text and type based on source
+    const buttonText = '处理';
+    const buttonClass = 'btn-primary';
+
+    const processButtonHTML = showProcessButton ? `
+        <div class="preview-actions-inline">
+            <button id="processNowBtn" class="${buttonClass}">${buttonText}</button>
+        </div>
+    ` : '';
+
     elements.nowPlayingContent.innerHTML = `
-        <div class="preview-title">文件已就绪</div>
-        <div class="preview-details">
-            <div>
-                <span class="detail-label">文件名</span>
-                <span class="detail-value" title="${fileInfo.name}">${fileInfo.name.length > 20 ? fileInfo.name.substring(0, 20) + '...' : fileInfo.name}</span>
+        <div style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div class="preview-title">文件已就绪</div>
+                    <div style="font-size: 0.9rem; color: var(--text-secondary); margin-top: 2px;">点击处理开始分离</div>
+                </div>
             </div>
-            <div>
-                <span class="detail-label">文件大小</span>
-                <span class="detail-value">${sizeMB} MB</span>
+            <div class="preview-details">
+                <div>
+                    <span class="detail-label">文件名</span>
+                    <span class="detail-value" title="${fileInfo.name}">${fileInfo.name.length > 20 ? fileInfo.name.substring(0, 20) + '...' : fileInfo.name}</span>
+                </div>
+                <div>
+                    <span class="detail-label">文件大小</span>
+                    <span class="detail-value">${sizeMB} MB</span>
+                </div>
+                <div>
+                    <span class="detail-label">时长</span>
+                    <span class="detail-value">${formatTime(fileInfo.duration)}</span>
+                </div>
+                <div>
+                    <span class="detail-label">格式</span>
+                    <span class="detail-value">${extension.toUpperCase()}</span>
+                </div>
             </div>
-            <div>
-                <span class="detail-label">时长</span>
-                <span class="detail-value">${formatTime(fileInfo.duration)}</span>
-            </div>
-            <div>
-                <span class="detail-label">格式</span>
-                <span class="detail-value">${extension.toUpperCase()}</span>
-            </div>
+            ${processButtonHTML}
         </div>
     `;
 
     // Update now-playing header
     if (elements.nowPlayingHeader) {
-        elements.nowPlayingHeader.textContent = '🎶 现在播放';
+        elements.nowPlayingHeader.textContent = '🎵 文件预览';
     }
 
     // Update dropzone visual state to show file was uploaded
@@ -2719,6 +2779,20 @@ function showPreviewInNowPlayingCard(fileInfo) {
     if (uploadDropzone) {
         uploadDropzone.classList.remove('uploaded', 'disabled');
         uploadDropzone.classList.add('uploaded');
+    }
+
+    // Add click handler for the process button if it exists
+    if (showProcessButton) {
+        const processNowBtn = document.getElementById('processNowBtn');
+        if (processNowBtn) {
+            processNowBtn.addEventListener('click', () => {
+                if (state.selectedFile && state.selectedFile.source === 'youtube') {
+                    separateYouTubeFile();
+                } else {
+                    processSelectedFile();
+                }
+            });
+        }
     }
 }
 
@@ -2738,94 +2812,19 @@ function clearPreviewFromNowPlayingCard() {
 }
 
 /**
- * Show Process card in uploadPanel (instead of file preview)
- * This is shown after file is uploaded, waiting for user to click "Process"
- */
-function showProcessCardInUploadPanel(fileInfo) {
-    if (!elements.processCard) return;
-
-    // Hide select file section and progress
-    if (elements.selectFileSection) elements.selectFileSection.classList.add('hidden');
-    if (elements.uploadProgress) elements.uploadProgress.classList.add('hidden');
-
-    // Show process card
-    elements.processCard.classList.remove('hidden');
-
-    // Update the Process button text and style
-    if (elements.confirmUploadBtn) {
-        elements.confirmUploadBtn.textContent = '处理';
-        elements.confirmUploadBtn.classList.remove('btn-danger');
-        elements.confirmUploadBtn.classList.add('btn-primary');
-    }
-
-    // Mark upload panel as visible (for toggle logic later)
-    state.uploadVisible = true;
-
-    console.log('Process card shown in uploadPanel');
-}
-
-/**
- * Handle the Confirm/Process/Clear button click based on current mode
- */
-function handleConfirmButtonClick() {
-    // Check which mode we're in by looking at the button text
-    const buttonText = elements.confirmUploadBtn?.textContent?.trim();
-
-    if (buttonText === '处理' || buttonText === '确认处理') {
-        // Process mode - start separation
-        processSelectedFile();
-    } else if (buttonText === '清除') {
-        // Clear mode - clear everything
-        clearSelection();
-    }
-}
-
-/**
  * Change Process button to Clear button after separation completes
+ * (This function is deprecated - now separation shows track list directly)
  */
 function changeToClearButton() {
-    if (!elements.confirmUploadBtn) return;
-
-    // Re-enable and restore button styling (was disabled during processing)
-    elements.confirmUploadBtn.disabled = false;
-    elements.confirmUploadBtn.style.opacity = '1';
-    elements.confirmUploadBtn.style.cursor = 'pointer';
-
-    // Change button to CLEAR
-    elements.confirmUploadBtn.textContent = '清除';
-    elements.confirmUploadBtn.classList.remove('btn-primary');
-    elements.confirmUploadBtn.classList.add('btn-danger');
-
-    // Re-enable cancel button
-    if (elements.cancelUploadBtn) {
-        elements.cancelUploadBtn.disabled = false;
-    }
-
-    console.log('Process button changed to Clear button');
+    // No longer needed - separation now shows track list directly in updateAfterSeparation()
 }
 
 /**
  * Reset Process button (when going back to initial state)
+ * (This function is deprecated - now Process button is in now-playing card)
  */
 function resetProcessButton() {
-    if (!elements.confirmUploadBtn) return;
-
-    // Restore button to normal state (enabled, visible)
-    elements.confirmUploadBtn.disabled = false;
-    elements.confirmUploadBtn.style.opacity = '1';
-    elements.confirmUploadBtn.style.cursor = 'pointer';
-
-    // Reset to PROCESS
-    elements.confirmUploadBtn.textContent = '处理';
-    elements.confirmUploadBtn.classList.remove('btn-danger');
-    elements.confirmUploadBtn.classList.add('btn-primary');
-
-    // Re-enable cancel button
-    if (elements.cancelUploadBtn) {
-        elements.cancelUploadBtn.disabled = false;
-    }
-
-    console.log('Process button reset');
+    // No longer needed - Process button is now in now-playing card
 }
 
 /**
@@ -2840,20 +2839,13 @@ function cancelFilePreview() {
         elements.fileInput.value = '';
     }
 
-    // Show the select file section again
-    const selectFileSection = document.querySelector('.select-file-section');
+    // Show the upload dropzone again
     const uploadDropzone = document.querySelector('.upload-dropzone');
-    if (selectFileSection) selectFileSection.classList.remove('hidden');
     if (uploadDropzone) uploadDropzone.classList.remove('hidden');
 
     // Hide process card
     if (elements.processCard) {
         elements.processCard.classList.add('hidden');
-    }
-
-    // Hide file preview panel (legacy)
-    if (elements.filePreview) {
-        elements.filePreview.classList.add('hidden');
     }
 
     // Hide progress
@@ -2892,8 +2884,6 @@ async function processSelectedFile() {
     }
 
     // Hide progress section in uploadPanel (we show progress in now-playing card instead)
-    const selectFileSection = document.querySelector('.select-file-section');
-    if (selectFileSection) selectFileSection.classList.add('hidden');
     elements.uploadProgress.classList.add('hidden');  // Hide the old progress bar in uploadPanel
 
     // File is already uploaded to storage/uploaded/
@@ -3022,14 +3012,15 @@ function handleProgressUpdate(data) {
 
     // Handle completion
     if (stage === 'complete' || status === 'success') {
-        showToast('✅ 分离完成!', 'success');
+        // Mark selected file as separated
+        if (state.selectedFile) {
+            state.selectedFile.isSeparated = true;
+        }
 
-        // Change button to CLEAR (this is the key change after separation)
-        changeToClearButton();
-
-        // Update UI: Fold upload panel, show track list
+        // Update UI: Show track list with success message
         updateAfterSeparation().then(() => {
             console.log('Separation completed and UI updated');
+            showToast('✅ 分离完成!', 'success');
         });
     }
 
@@ -3124,12 +3115,33 @@ async function updateAfterSeparation() {
         elements.processCard.classList.add('hidden');
     }
 
+    // Show success message in now-playing card before resetting
+    if (elements.nowPlayingContent) {
+        elements.nowPlayingContent.innerHTML = `
+            <div class="processing-content">
+                <div style="font-size: 1.25rem; font-weight: 700; color: #22c55e; margin-bottom: 12px;">
+                    ✅ 分离完成!
+                </div>
+                <div style="font-size: 0.95rem; color: var(--text-secondary);">
+                    分离结果已加载到音轨库
+                </div>
+            </div>
+        `;
+    }
+
+    if (elements.nowPlayingHeader) {
+        elements.nowPlayingHeader.textContent = '✅ 完成';
+    }
+
+    // After a brief delay, show placeholder and track list
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
     // Hide processing progress in now-playing card
     hideProcessingInNowPlayingCard();
 
     // Reset now-playing header and show placeholder
-    if (elements.nowPlayingContentHeader) {
-        elements.nowPlayingContentHeader.textContent = '🎶 现在播放';
+    if (elements.nowPlayingHeader) {
+        elements.nowPlayingHeader.textContent = '🎶 现在播放';
     }
     if (elements.nowPlayingContent) {
         elements.nowPlayingContent.innerHTML = '<div class="placeholder-text">选择音轨开始播放</div>';
@@ -3228,9 +3240,8 @@ async function handleYouTubeDownload() {
             if (elements.youtubeUrl) elements.youtubeUrl.value = '';
             if (elements.youtubeName) elements.youtubeName.value = '';
 
-            // Update UI: Fold upload panel, show track list
-            // But first, we need to call separate on the downloaded file
-            await processDownloadedYouTubeFile(result.data.file_path);
+            // Show preview with play controls for the downloaded file
+            await showYouTubePreview(result.data);
 
             // Hide YouTube progress after delay
             setTimeout(() => {
@@ -3251,19 +3262,135 @@ async function handleYouTubeDownload() {
 }
 
 /**
- * Process downloaded YouTube file
+ * Show YouTube download preview with play controls
+ * Allows user to listen to original file before separation
+ */
+async function showYouTubePreview(downloadResult) {
+    const filename = downloadResult.file_path.split('/').pop();
+    const duration = downloadResult.duration;
+
+    // Set state.selectedFile with downloaded file info
+    state.selectedFile = {
+        name: filename,
+        path: downloadResult.file_path,
+        duration: duration,
+        source: 'youtube',
+        isSeparated: false
+    };
+
+    // Hide upload panel (fold it)
+    state.uploadVisible = false;
+    if (elements.uploadPanel) {
+        elements.uploadPanel.classList.add('hidden');
+    }
+
+    // Hide process card (we're using now-playing card exclusively)
+    if (elements.processCard) {
+        elements.processCard.classList.add('hidden');
+    }
+
+    // Update now-playing card with preview and Separate button
+    if (elements.nowPlayingContent) {
+        elements.nowPlayingContent.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div class="preview-title">YouTube 下载完成</div>
+                        <div style="font-size: 0.9rem; color: var(--text-secondary); margin-top: 2px;">点击播放预览，或分离处理</div>
+                    </div>
+                </div>
+                <div class="preview-details">
+                    <div>
+                        <span class="detail-label">文件名</span>
+                        <span class="detail-value" title="${filename}">${filename.length > 20 ? filename.substring(0, 20) + '...' : filename}</span>
+                    </div>
+                    <div>
+                        <span class="detail-label">时长</span>
+                        <span class="detail-value">${formatTime(duration)}</span>
+                    </div>
+                    <div>
+                        <span class="detail-label">来源</span>
+                        <span class="detail-value">YouTube</span>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button id="playPreviewBtn" class="btn-secondary">▶ 播放预览</button>
+                    <button id="separateBtn" class="btn-primary">分离处理</button>
+                </div>
+            </div>
+        `;
+
+        // Add click handlers for the buttons
+        const playPreviewBtn = document.getElementById('playPreviewBtn');
+        if (playPreviewBtn) {
+            playPreviewBtn.addEventListener('click', playOriginalFile);
+        }
+
+        const separateBtn = document.getElementById('separateBtn');
+        if (separateBtn) {
+            separateBtn.addEventListener('click', separateYouTubeFile);
+        }
+    }
+
+    // Update now-playing header
+    if (elements.nowPlayingHeader) {
+        elements.nowPlayingHeader.textContent = '🎵 YouTube 预览';
+    }
+
+    // Update total time display for preview
+    if (elements.totalTime && duration) {
+        elements.totalTime.textContent = formatTime(duration);
+    }
+
+    // Reset current time to 0:00
+    if (elements.currentTime) {
+        elements.currentTime.textContent = '0:00';
+    }
+
+    // Reset seek bar
+    if (elements.seekBar) {
+        elements.seekBar.value = 0;
+    }
+
+    // Enable play controls for original file
+    state.isPlaying = false;
+    updatePlayState();
+}
+
+/**
+ * Separate downloaded YouTube file
  * The file is in storage/uploaded/, now run separation on it
  */
-async function processDownloadedYouTubeFile(filePath) {
-    // Extract filename from path
-    const filename = filePath.split('/').pop();
+async function separateYouTubeFile() {
+    if (!state.selectedFile || !state.selectedFile.name) {
+        showToast('请先下载 YouTube 音频', 'warning');
+        return;
+    }
 
-    // Create FormData for separation
+    const filename = state.selectedFile.name;
     const formData = new FormData();
     formData.append('filename', filename);
 
+    // Show processing progress in now-playing card
+    showProcessingInNowPlayingCard('开始分离...', 0, 0, 0);
+
+    // Disable the Separate button during processing
+    if (elements.confirmUploadBtn) {
+        elements.confirmUploadBtn.disabled = true;
+        elements.confirmUploadBtn.style.opacity = '0.5';
+        elements.confirmUploadBtn.style.cursor = 'not-allowed';
+    }
+
+    // Stop any currently playing audio
+    if (window.originalAudioPlayer && !window.originalAudioPlayer.paused) {
+        window.originalAudioPlayer.pause();
+    }
+    state.isPlaying = false;
+    updatePlayState();
+
     try {
-        const response = await fetch(`${API_BASE_URL}/separation/separate_by_name`, {
+        // Use SSE endpoint for real-time progress
+        const response = await fetch(`${API_BASE_URL}/separation/separate_by_name_stream`, {
             method: 'POST',
             body: formData,
         });
@@ -3272,23 +3399,50 @@ async function processDownloadedYouTubeFile(filePath) {
             throw new Error(`HTTP ${response.status}`);
         }
 
-        const result = await response.json();
+        // Check if it's a streaming response
+        if (response.headers.get('content-type')?.includes('text/event-stream')) {
+            // Read SSE stream
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
 
-        if (result.status === 'success') {
-            showToast('✅ YouTube音频已下载并分离完成!', 'success');
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
 
-            // Change button to CLEAR (so user can clear everything)
-            changeToClearButton();
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n').filter(line => line.trim().startsWith('data:'));
 
-            // Update UI: Fold upload panel, show track list
-            await updateAfterSeparation();
-
-            return;
+                for (const line of lines) {
+                    try {
+                        const data = JSON.parse(line.replace('data:', '').trim());
+                        handleProgressUpdate(data);
+                    } catch (e) {
+                        console.log('Parse error:', e);
+                    }
+                }
+            }
+        } else {
+            // Non-streaming response
+            const result = await response.json();
+            if (result.status === 'success') {
+                handleProgressUpdate({ stage: 'complete', status: 'success', message: '分离完成' });
+            }
         }
 
     } catch (error) {
         console.error('YouTube separation error:', error);
-        showToast(`处理失败: ${error.message}`, 'error');
+        showToast(`分离失败: ${error.message}`, 'error');
+
+        // Hide processing progress in now-playing card
+        hideProcessingInNowPlayingCard();
+
+        // Restore button state on error
+        if (elements.confirmUploadBtn) {
+            elements.confirmUploadBtn.disabled = false;
+            elements.confirmUploadBtn.style.opacity = '1';
+            elements.confirmUploadBtn.style.cursor = 'pointer';
+            elements.confirmUploadBtn.textContent = '分离';
+        }
     }
 }
 
@@ -3306,6 +3460,23 @@ function showToast(message, type = 'info') {
     elements.toast.hideTimeout = setTimeout(() => {
         elements.toast.classList.remove('show');
     }, 3000);
+
+    // Also announce to screen readers
+    announceToScreenReader(message);
+}
+
+/**
+ * Announce message to screen readers via hidden live region
+ * @param {string} message - Message to announce
+ */
+function announceToScreenReader(message) {
+    if (!elements.srAnnounce) return;
+
+    // Clear and set content to trigger announcement
+    elements.srAnnounce.textContent = '';
+    setTimeout(() => {
+        elements.srAnnounce.textContent = message;
+    }, 100);
 }
 
 /**
@@ -3332,6 +3503,11 @@ function debounce(func, wait) {
         timeout = setTimeout(later, wait);
     };
 }
+
+/**
+ * Performance-optimized track list rendering with debouncing
+ */
+const debouncedRenderTrackList = debounce(renderTrackList, 150);
 
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {

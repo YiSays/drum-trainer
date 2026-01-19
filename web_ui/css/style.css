@@ -64,6 +64,34 @@
     --transition-fast: 150ms ease;
     --transition-base: 250ms ease;
     --transition-slow: 400ms ease;
+
+    /* Animation Timing - Staggered Entrances */
+    --stagger-sm: 50ms;
+    --stagger-md: 100ms;
+    --stagger-lg: 150ms;
+    --stagger-xl: 200ms;
+
+    /* Skeleton Loading */
+    --skeleton-bg: rgba(255, 255, 255, 0.05);
+    --skeleton-shimmer: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+
+    /* Visual Metronome */
+    --metronome-beat-size: 16px;
+    --metronome-beat-gap: 8px;
+
+    /* Track Type Colors - Enhanced for visual coding */
+    --track-drum: #ef4444;
+    --track-drum-bg: rgba(239, 68, 68, 0.15);
+    --track-bass: #3b82f6;
+    --track-bass-bg: rgba(59, 130, 246, 0.15);
+    --track-vocals: #ec4899;
+    --track-vocals-bg: rgba(236, 72, 153, 0.15);
+    --track-other: #a78bfa;
+    --track-other-bg: rgba(139, 92, 246, 0.15);
+    --track-piano: #10b981;
+    --track-piano-bg: rgba(16, 185, 129, 0.15);
+    --track-guitar: #f59e0b;
+    --track-guitar-bg: rgba(245, 158, 11, 0.15);
 }
 
 /* ============================================
@@ -329,10 +357,6 @@ body {
 }
 
 /* File Preview Section */
-.select-file-section.hidden {
-    display: none;
-}
-
 .file-preview {
     padding: var(--space-lg);
     background: rgba(139, 92, 246, 0.05);
@@ -1833,4 +1857,673 @@ body {
         var(--bg-tertiary) 100%);
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
+}
+
+/* ============================================
+   Visual Metronome Component
+   ============================================ */
+
+.metronome-card {
+    margin-top: var(--space-md);
+}
+
+.metronome-visual-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-lg);
+    padding: var(--space-lg);
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: var(--radius-lg);
+}
+
+.metronome-visual {
+    display: flex;
+    align-items: center;
+    gap: var(--metronome-beat-gap);
+}
+
+.beat-dot {
+    width: var(--metronome-beat-size);
+    height: var(--metronome-beat-size);
+    border-radius: 50%;
+    background: var(--bg-tertiary);
+    border: 2px solid var(--glass-border);
+    transition: all 100ms ease;
+    position: relative;
+}
+
+.beat-dot::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0;
+    transition: all 100ms ease;
+}
+
+/* Active beat states */
+.beat-dot.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 0 15px var(--accent-glow);
+    transform: scale(1.3);
+}
+
+.beat-dot.active::after {
+    width: 8px;
+    height: 8px;
+    opacity: 1;
+}
+
+/* Accent beat (first beat of measure) */
+.beat-dot.active.accent {
+    background: var(--primary);
+    border-color: var(--primary);
+    box-shadow: 0 0 25px var(--primary-glow);
+    transform: scale(1.5);
+}
+
+.beat-dot.active.accent::after {
+    background: var(--primary-light);
+    width: 10px;
+    height: 10px;
+}
+
+/* Staggered animation for beat dots */
+@keyframes beatPulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.4); opacity: 0.8; }
+}
+
+.beat-dot.pulsing {
+    animation: beatPulse 300ms ease;
+}
+
+.metronome-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+}
+
+.metronome-bpm-display {
+    font-family: var(--font-mono);
+    color: var(--primary-light);
+    font-weight: 600;
+    padding: var(--space-xs) var(--space-md);
+    background: rgba(139, 92, 246, 0.1);
+    border-radius: var(--radius-full);
+    border: 1px solid var(--primary);
+}
+
+/* ============================================
+   Enhanced Track Cards with Type Styling
+   ============================================ */
+
+/* Enhanced track card with type-specific styling */
+.track-card {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-md);
+    cursor: pointer;
+    transition: all var(--transition-base);
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Type-specific left border accent */
+.track-card::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: transparent;
+    transition: background var(--transition-base);
+}
+
+/* Type-specific styling */
+.track-card.drum::before { background: var(--track-drum); }
+.track-card.bass::before { background: var(--track-bass); }
+.track-card.vocals::before { background: var(--track-vocals); }
+.track-card.piano::before { background: var(--track-piano); }
+.track-card.guitar::before { background: var(--track-guitar); }
+.track-card.other::before { background: var(--track-other); }
+
+.track-card:hover::before {
+    opacity: 0.8;
+    width: 6px;
+}
+
+.track-card:hover {
+    background: var(--glass-highlight);
+    border-color: var(--primary);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.track-card.active {
+    background: rgba(139, 92, 246, 0.15);
+    border-color: var(--primary);
+    box-shadow: 0 0 20px var(--primary-glow);
+}
+
+/* Track icon with type-specific glow */
+.track-card:hover .track-icon {
+    transform: scale(1.1);
+    filter: drop-shadow(0 0 8px var(--primary-glow));
+}
+
+.track-card.active .track-icon {
+    animation: pulse 2s infinite;
+}
+
+/* Enhanced track meta with type-specific colors */
+.track-card.drum .track-meta { color: var(--track-drum); }
+.track-card.bass .track-meta { color: var(--track-bass); }
+.track-card.vocals .track-meta { color: var(--track-vocals); }
+.track-card.piano .track-meta { color: var(--track-piano); }
+.track-card.guitar .track-meta { color: var(--track-guitar); }
+.track-card.other .track-meta { color: var(--track-other); }
+
+/* Staggered entrance animation */
+.track-card:nth-child(1) { animation-delay: var(--stagger-sm); }
+.track-card:nth-child(2) { animation-delay: var(--stagger-md); }
+.track-card:nth-child(3) { animation-delay: calc(var(--stagger-md) + var(--stagger-sm)); }
+.track-card:nth-child(4) { animation-delay: calc(var(--stagger-md) * 2); }
+.track-card:nth-child(5) { animation-delay: calc(var(--stagger-md) * 2 + var(--stagger-sm)); }
+
+/* ============================================
+   Skeleton Loading States
+   ============================================ */
+
+/* Skeleton track card */
+.skeleton-track {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-md);
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    overflow: hidden;
+    position: relative;
+}
+
+.skeleton-track::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.03) 50%,
+        transparent 100%);
+    animation: shimmer 1.5s infinite;
+}
+
+.skeleton-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background: var(--skeleton-bg);
+    flex-shrink: 0;
+}
+
+.skeleton-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.skeleton-line {
+    height: 12px;
+    border-radius: 6px;
+    background: var(--skeleton-bg);
+}
+
+.skeleton-line.short {
+    width: 60%;
+}
+
+/* Loading state for track list */
+.track-list.loading {
+    position: relative;
+}
+
+.track-list.loading::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--glass-bg);
+    border-radius: var(--radius-lg);
+    z-index: 10;
+}
+
+/* ============================================
+   Enhanced Tooltips
+   ============================================ */
+
+/* Custom tooltip for all buttons with title attribute */
+button[title]:hover::after,
+button[title]:focus::after {
+    content: attr(title);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%) translateY(-8px);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    white-space: nowrap;
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    z-index: 1000;
+    pointer-events: none;
+}
+
+/* Input tooltip */
+input[title]:hover::after,
+input[title]:focus::after {
+    content: attr(title);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%) translateY(-8px);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    white-space: nowrap;
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    z-index: 1000;
+    pointer-events: none;
+}
+
+/* ============================================
+   Custom Scrollbars - Enhanced
+   ============================================ */
+
+/* Global custom scrollbars */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--glass-border);
+    border-radius: 4px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    transition: all var(--transition-base);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--primary);
+    box-shadow: 0 0 10px var(--primary-glow);
+}
+
+::-webkit-scrollbar-thumb:active {
+    background: var(--primary-light);
+}
+
+/* Firefox scrollbar */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary) var(--bg-secondary);
+}
+
+*::-webkit-scrollbar-corner {
+    background: var(--bg-secondary);
+}
+
+/* ============================================
+   Metronome Card Animation
+   ============================================ */
+
+@keyframes metronomeBeat {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-5px) scale(1.02); }
+}
+
+.metronome-card.beat-active .metronome-visual-container {
+    animation: metronomeBeat 150ms ease;
+}
+
+/* ============================================
+   Track List Container Enhancements
+   ============================================ */
+
+.track-list-container {
+    flex: 1;
+    min-height: 200px;
+    position: relative;
+}
+
+/* Loading overlay with spinner */
+.loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(10, 10, 15, 0.8);
+    backdrop-filter: blur(4px);
+    border-radius: var(--radius-lg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-md);
+    z-index: 100;
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--glass-border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.loading-text {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+/* ============================================
+   Upload Dropzone Enhanced States
+   ============================================ */
+
+.upload-dropzone {
+    position: relative;
+}
+
+.upload-dropzone.dragover {
+    border-color: var(--primary) !important;
+    background: rgba(139, 92, 246, 0.15) !important;
+    transform: scale(1.01);
+}
+
+/* Visual feedback for file selection */
+.upload-dropzone.has-file {
+    border-color: var(--success);
+    background: rgba(16, 185, 129, 0.1);
+}
+
+/* ============================================
+   Button Glow Effects - Enhanced
+   ============================================ */
+
+.btn-primary {
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-primary::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s ease;
+}
+
+.btn-primary:hover::before {
+    left: 100%;
+}
+
+/* ============================================
+   Toast - Enhanced Animation
+   ============================================ */
+
+.toast {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    z-index: 1000;
+    transform: translateY(150%) scale(0.9);
+    opacity: 0;
+    transition: all var(--transition-slow);
+}
+
+.toast.show {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+}
+
+/* Toast variants with color coding */
+.toast.success .toast-content {
+    border-left-color: var(--success);
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), var(--glass-bg));
+}
+
+.toast.error .toast-content {
+    border-left-color: var(--error);
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), var(--glass-bg));
+}
+
+.toast.warning .toast-content {
+    border-left-color: var(--warning);
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), var(--glass-bg));
+}
+
+.toast.info .toast-content {
+    border-left-color: var(--info);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), var(--glass-bg));
+}
+
+/* ============================================
+   Enhanced Analysis Card
+   ============================================ */
+
+.analysis-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: var(--space-md);
+}
+
+.stat-box {
+    position: relative;
+    overflow: hidden;
+    transition: transform var(--transition-base);
+}
+
+.stat-box:hover {
+    transform: translateY(-2px);
+}
+
+.stat-box::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(circle at center, rgba(255, 255, 255, 0.05) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity var(--transition-base);
+}
+
+.stat-box:hover::after {
+    opacity: 1;
+}
+
+/* ============================================
+   Enhanced Now Playing Display
+   ============================================ */
+
+.placeholder-text {
+    color: var(--text-muted);
+    font-size: 1.125rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    padding: var(--space-xl);
+    min-height: 100px;
+}
+
+.placeholder-text::before {
+    content: '🎵';
+    animation: pulse 2s infinite;
+}
+
+/* ============================================
+   Progress Bar Enhanced
+   ============================================ */
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), var(--accent), var(--primary));
+    background-size: 200% 100%;
+    border-radius: var(--radius-full);
+    transition: width var(--transition-slow);
+    box-shadow: 0 0 10px var(--primary-glow);
+    position: relative;
+    overflow: hidden;
+}
+
+.progress-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    animation: shimmer 2s infinite;
+}
+
+/* ============================================
+   Mobile-First Enhancements (Responsive)
+   ============================================ */
+
+@media (max-width: 480px) {
+    .metronome-visual-container {
+        padding: var(--space-md);
+        gap: var(--space-md);
+    }
+
+    .metronome-visual {
+        gap: 6px;
+    }
+
+    .beat-dot {
+        width: 14px;
+        height: 14px;
+    }
+
+    .metronome-info {
+        flex-direction: column;
+        gap: var(--space-sm);
+    }
+
+    /* Stacking controls on very small screens */
+    .main-controls {
+        flex-wrap: wrap;
+    }
+
+    /* Larger touch targets for mobile */
+    .btn-control {
+        min-width: 48px;
+        min-height: 48px;
+    }
+
+    .track-card {
+        padding: var(--space-sm);
+        gap: var(--space-sm);
+    }
+
+    .track-icon {
+        font-size: 1.5rem;
+    }
+}
+
+/* ============================================
+   Focus Visible (Accessibility)
+   ============================================ */
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px var(--primary-glow);
+}
+
+/* ============================================
+   Disabled States - Enhanced
+   ============================================ */
+
+button:disabled,
+input:disabled,
+select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    position: relative;
+}
+
+button:disabled::after,
+input:disabled::after,
+select:disabled::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: transparent;
+    cursor: not-allowed;
+}
+
+/* ============================================
+   Keyboard Shortcut Indicator
+   ============================================ */
+
+.shortcut::before {
+    content: '[';
+    color: var(--primary-light);
+    margin-right: 2px;
+}
+
+.shortcut::after {
+    content: ']';
+    color: var(--primary-light);
+    margin-left: 2px;
 }

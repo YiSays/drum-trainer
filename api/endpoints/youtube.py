@@ -84,13 +84,13 @@ async def separate_youtube_audio(
 
         audio_path = Path(download_result["file_path"])
 
-        # 步骤 2: Create separated directory and move file
-        print(f"步骤 2: 移动文件进行处理")
+        # 步骤 2: Create separated directory and COPY file (keep original for playback)
+        print(f"步骤 2: 复制文件进行处理（保留原文件）")
         separated_dir = UPLOAD_DIR / "separated"
         separated_dir.mkdir(parents=True, exist_ok=True)
 
         temp_file = separated_dir / "temp.mp3"
-        shutil.move(str(audio_path), str(temp_file))
+        shutil.copy2(str(audio_path), str(temp_file))
 
         try:
             # 步骤 3: 分离鼓声

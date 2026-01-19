@@ -26,50 +26,61 @@ DEMO_DIR = Path("storage/demo")
 @router.get("/list", summary="列出所有音轨", response_model=List[dict])
 async def list_tracks():
     """
-    列出 storage/uploaded/separated/ 中的音频文件
-
-    如果目录不存在或为空，返回空列表
-    忽略 temp.mp3 文件
-
-    Returns:
-        轨道列表，包含名称、路径、大小、时长、来源等信息
+    列出 storage/uploaded/ 目录中的文件
+    包括: 原始文件 (storage/uploaded/) 和分离文件 (storage/uploaded/separated/)
     """
     audio_io = AudioIO()
     supported_extensions = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".webm"}
 
-    tracks = []
+    files = []
 
-    # Only scan storage/uploaded/separated/ directory
+    # First, check for original files in storage/uploaded/
+    for file_path in UPLOAD_DIR.iterdir():
+        if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
+            if file_path.name == "temp.mp3":
+                continue
+
+            try:
+                info = audio_io.get_audio_info(file_path)
+
+                files.append({
+                    "name": file_path.name,
+                    "path": str(file_path.relative_to(UPLOAD_DIR.parent)),
+                    "size": file_path.stat().st_size,
+                    "duration": info["duration"],
+                    "samplerate": info["samplerate"],
+                    "channels": info["channels"],
+                    "extension": file_path.suffix[1:],
+                    "source": "uploaded",
+                    "is_separated": False,  # This is an original file
+                })
+            except Exception:
+                continue
+
+    # Then, check for separated files in storage/uploaded/separated/
     separated_dir = UPLOAD_DIR / "separated"
     if separated_dir.exists():
-        for file_path in separated_dir.iterdir():
-            if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
-                # Skip temp files
-                if file_path.name == "temp.mp3":
-                    continue
+        for file_path in separated_dir.glob("*.wav"):
+            try:
+                info = audio_io.get_audio_info(file_path)
 
-                try:
-                    info = audio_io.get_audio_info(file_path)
+                files.append({
+                    "name": file_path.name,
+                    "path": str(file_path.relative_to(UPLOAD_DIR.parent)),
+                    "size": file_path.stat().st_size,
+                    "duration": info["duration"],
+                    "samplerate": info["samplerate"],
+                    "channels": info["channels"],
+                    "extension": file_path.suffix[1:],
+                    "source": "uploaded",
+                    "is_separated": True,  # This is a separated track
+                })
+            except Exception:
+                continue
 
-                    # Get relative path (storage/uploaded/separated/xxx.wav)
-                    rel_path = file_path.relative_to(UPLOAD_DIR.parent)
+    files.sort(key=lambda x: x["name"])
 
-                    track_data = {
-                        "name": file_path.name,
-                        "path": str(rel_path),
-                        "size": file_path.stat().st_size,
-                        "duration": info["duration"],
-                        "samplerate": info["samplerate"],
-                        "channels": info["channels"],
-                        "extension": file_path.suffix[1:],
-                        "source": "uploaded",
-                    }
-                    tracks.append(track_data)
-                except Exception:
-                    continue
-
-    tracks.sort(key=lambda x: x["name"])
-    return tracks
+    return files
 
 
 @router.get("/status", summary="检查上传状态")
@@ -119,14 +130,20 @@ async def get_audio_file(filename: str):
     Returns:
         音频文件流
     """
-    # Look in storage/uploaded/separated/ first
+    # Search order:
+    # 1. storage/uploaded/separated/ (separated tracks)
+    # 2. storage/uploaded/ (original files)
+    # 3. storage/demo/ (demo files)
+
     separated_dir = UPLOAD_DIR / "separated"
+    uploaded_dir = UPLOAD_DIR
+
+    # Try separated/ directory first
     file_path = separated_dir / filename
 
-    # Security check: prevent path traversal
+    # Security check for separated directory
     try:
         file_path = file_path.resolve()
-        # Verify the file is within allowed directories
         separated_dir_resolved = separated_dir.resolve()
         demo_dir = DEMO_DIR.resolve()
 
@@ -141,7 +158,20 @@ async def get_audio_file(filename: str):
     except Exception:
         raise HTTPException(403, "路径解析错误")
 
-    # If not found in separated/, check demo directory
+    # If not found in separated/, try uploaded/ directory
+    if not file_path.exists():
+        file_path = uploaded_dir / filename
+
+        # Security check for uploaded directory
+        try:
+            file_path = file_path.resolve()
+            uploaded_dir_resolved = uploaded_dir.resolve()
+            if not str(file_path).startswith(str(uploaded_dir_resolved)):
+                raise HTTPException(403, "不允许访问此路径")
+        except Exception:
+            raise HTTPException(403, "路径解析错误")
+
+    # If not found in uploaded/, try demo directory
     if not file_path.exists():
         file_path = DEMO_DIR / filename
 
@@ -193,11 +223,18 @@ async def get_audio_info(filename: str):
     Returns:
         文件信息
     """
-    # Look in storage/uploaded/separated/ first
+    # Search order:
+    # 1. storage/uploaded/separated/ (separated tracks)
+    # 2. storage/uploaded/ (original files)
+    # 3. storage/demo/ (demo files)
+
     separated_dir = UPLOAD_DIR / "separated"
+    uploaded_dir = UPLOAD_DIR
+
+    # Try separated/ directory first
     file_path = separated_dir / filename
 
-    # Security check
+    # Security check for separated directory
     try:
         file_path = file_path.resolve()
         separated_dir_resolved = separated_dir.resolve()
@@ -214,10 +251,24 @@ async def get_audio_info(filename: str):
     except Exception:
         raise HTTPException(403, "路径解析错误")
 
-    # If not found in separated/, check demo directory
+    # If not found in separated/, try uploaded/ directory
+    if not file_path.exists():
+        file_path = uploaded_dir / filename
+
+        # Security check for uploaded directory
+        try:
+            file_path = file_path.resolve()
+            uploaded_dir_resolved = uploaded_dir.resolve()
+            if not str(file_path).startswith(str(uploaded_dir_resolved)):
+                raise HTTPException(403, "不允许访问此路径")
+        except Exception:
+            raise HTTPException(403, "路径解析错误")
+
+    # If not found in uploaded/, try demo directory
     if not file_path.exists():
         file_path = DEMO_DIR / filename
 
+        # Verify demo path is still allowed
         try:
             file_path = file_path.resolve()
             demo_dir = DEMO_DIR.resolve()
@@ -249,3 +300,53 @@ async def get_audio_info(filename: str):
 
     except Exception as e:
         raise HTTPException(500, f"无法读取文件信息: {str(e)}")
+
+
+@router.get("/audio/original/{filename}", summary="获取原始音频文件")
+async def get_original_audio(filename: str):
+    """
+    从 storage/uploaded/ 获取原始音频文件（用于播放预览）
+
+    Args:
+        filename: 音频文件名
+
+    Returns:
+        原始音频文件流
+    """
+    file_path = UPLOAD_DIR / filename
+
+    # Security check: prevent path traversal
+    try:
+        file_path = file_path.resolve()
+        upload_dir_resolved = UPLOAD_DIR.resolve()
+        if not str(file_path).startswith(str(upload_dir_resolved)):
+            raise HTTPException(403, "不允许访问此路径")
+    except Exception:
+        raise HTTPException(403, "路径解析错误")
+
+    if not file_path.exists():
+        raise HTTPException(404, f"文件不存在: {filename}")
+
+    if not file_path.is_file():
+        raise HTTPException(400, "不是文件")
+
+    # 根据扩展名设置媒体类型
+    ext = file_path.suffix.lower()
+    media_type = {
+        ".wav": "audio/wav",
+        ".mp3": "audio/mpeg",
+        ".m4a": "audio/mp4",
+        ".flac": "audio/flac",
+        ".ogg": "audio/ogg",
+        ".webm": "audio/webm",
+    }.get(ext, "application/octet-stream")
+
+    return FileResponse(
+        path=file_path,
+        filename=file_path.name,
+        media_type=media_type,
+        # 启用范围请求（支持seek）
+        headers={
+            "Accept-Ranges": "bytes",
+        }
+    )

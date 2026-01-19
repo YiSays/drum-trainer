@@ -33,7 +33,7 @@ async def separate_drums(
 
     **处理流程**:
     1. 保存文件到 storage/uploaded/filename
-    2. 移动到 storage/uploaded/separated/temp.mp3 进行分离
+    2. **复制**到 storage/uploaded/separated/temp.mp3 进行分离（不删除原文件）
     3. 运行分离 (结果保存在 separated/ 目录)
     4. 删除 temp.mp3
     """
@@ -51,12 +51,12 @@ async def separate_drums(
     finally:
         file.file.close()
 
-    # Step 2: Create separated directory and move file
+    # Step 2: Create separated directory and COPY file (keep original for playback)
     separated_dir = UPLOAD_DIR / "separated"
     separated_dir.mkdir(parents=True, exist_ok=True)
 
     temp_file = separated_dir / "temp.mp3"
-    shutil.move(str(uploaded_file), str(temp_file))
+    shutil.copy2(str(uploaded_file), str(temp_file))
 
     try:
         # Step 3: Run separation - save results to separated_dir
@@ -125,7 +125,14 @@ async def clear_uploaded():
     清除 storage/uploaded/ 目录及其所有内容
     """
     if UPLOAD_DIR.exists():
-        shutil.rmtree(UPLOAD_DIR)
+        # Remove all files and subdirectories in uploaded/
+        for item in UPLOAD_DIR.iterdir():
+            if item.is_file():
+                item.unlink()
+            elif item.is_dir():
+                shutil.rmtree(item, ignore_errors=True)
+
+        # Recreate the directory
         UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
     return {"status": "success", "message": "上传文件已清除"}
@@ -141,7 +148,7 @@ async def separate_by_name(
 
     用于前端：用户先上传文件预览，然后点击处理
 
-    文件将移动到 storage/uploaded/separated/temp.mp3 进行分离
+    文件将**复制**到 storage/uploaded/separated/temp.mp3 进行分离（不删除原文件）
     分离结果保存在 storage/uploaded/separated/ 目录
     """
     start_time = time.time()
@@ -151,12 +158,13 @@ async def separate_by_name(
     if not uploaded_file.exists():
         raise HTTPException(404, f"文件不存在: {filename}")
 
-    # Create separated directory and move file
+    # Create separated directory
     separated_dir = UPLOAD_DIR / "separated"
     separated_dir.mkdir(parents=True, exist_ok=True)
 
+    # Copy file instead of move - keep original for playback during processing
     temp_file = separated_dir / "temp.mp3"
-    shutil.move(str(uploaded_file), str(temp_file))
+    shutil.copy2(str(uploaded_file), str(temp_file))
 
     try:
         # Run separation - save results to separated_dir
@@ -191,6 +199,8 @@ async def separate_by_name_stream(
     """
     分离已上传到 storage/uploaded/ 的文件，并通过 SSE 流式返回进度
 
+    文件将**复制**到 storage/uploaded/separated/temp.mp3 进行分离（不删除原文件）
+
     **进度阶段**:
     - loading: 加载音频文件
     - chunk: 分段处理 (N/总片段数)
@@ -207,12 +217,13 @@ async def separate_by_name_stream(
     if not uploaded_file.exists():
         raise HTTPException(404, f"文件不存在: {filename}")
 
-    # Create separated directory and move file
+    # Create separated directory
     separated_dir = UPLOAD_DIR / "separated"
     separated_dir.mkdir(parents=True, exist_ok=True)
 
+    # Copy file instead of move - keep original for playback during processing
     temp_file = separated_dir / "temp.mp3"
-    shutil.move(str(uploaded_file), str(temp_file))
+    shutil.copy2(str(uploaded_file), str(temp_file))
 
     async def generate_progress():
         """生成 SSE 事件流"""

@@ -47,13 +47,13 @@
                 </div>
 
                 <!-- Upload Panel -->
-                <div id="uploadPanel" class="upload-panel">
-                    <div class="upload-dropzone">
+                <div id="uploadPanel" class="upload-panel" role="region" aria-label="File upload">
+                    <div class="upload-dropzone" role="button" tabindex="0" aria-label="Drop audio file here or click to select">
                         <div class="drop-icon">📁</div>
                         <h3>拖放音频文件到这里</h3>
                         <p class="drop-subtitle">或点击选择文件</p>
-                        <input type="file" id="fileInput" accept="audio/*" class="file-input-hidden">
-                        <button id="selectFileBtn" class="btn-primary">选择文件</button>
+                        <input type="file" id="fileInput" accept="audio/*" class="file-input-hidden" aria-label="Select audio file">
+                        <button id="selectFileBtn" class="btn-primary" aria-label="Choose file">选择文件</button>
                         <div class="upload-hint">支持: MP3, WAV, FLAC, OGG (最大 100MB)</div>
 
                         <div id="uploadProgress" class="upload-progress hidden">
@@ -122,16 +122,40 @@
                 <!-- Now Playing Card (simplified - single unified content area) -->
                 <div class="card now-playing-card">
                     <div class="card-header">
-                        <h3 id="nowPlayingHeader">🎶 现在播放</h3>
-                        <div id="bpmBadge" class="bpm-badge hidden">
+                        <h3 id="nowPlayingHeader" role="status" aria-live="polite">🎶 现在播放</h3>
+                        <div id="bpmBadge" class="bpm-badge hidden" role="status" aria-label="BPM indicator">
                             <span class="bpm-value">--</span>
                             <span class="bpm-label">BPM</span>
                         </div>
                     </div>
                     <div class="card-body">
-                        <div id="nowPlayingContent">
+                        <div id="nowPlayingContent" role="region" aria-label="Now playing content">
                             <!-- Dynamic content loaded here -->
                             <div class="placeholder-text">选择音轨开始播放</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Visual Metronome -->
+                <div class="card metronome-card">
+                    <div class="card-header">
+                        <h3>🎵 视觉节拍器</h3>
+                        <button id="countInBtn" class="btn-secondary" style="padding: 6px 12px; font-size: 0.85rem;" aria-label="Start 4-beat count-in">
+                            4拍预备
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="metronome-visual-container" role="status" aria-live="off" aria-label="Beat indicator">
+                            <div class="metronome-visual" id="metronomeVisual">
+                                <div class="beat-dot" data-beat="1"></div>
+                                <div class="beat-dot" data-beat="2"></div>
+                                <div class="beat-dot" data-beat="3"></div>
+                                <div class="beat-dot" data-beat="4"></div>
+                            </div>
+                            <div class="metronome-info">
+                                <span id="metronomeStatus">就绪</span>
+                                <span id="metronomeBpm" class="metronome-bpm-display">-- BPM</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -159,21 +183,21 @@
                     <div class="card-body">
                         <!-- Main Controls -->
                         <div class="control-section">
-                            <div class="main-controls">
-                                <button id="stopBtn" class="btn-control stop" disabled>
+                            <div class="main-controls" role="group" aria-label="Playback controls">
+                                <button id="stopBtn" class="btn-control stop" disabled aria-label="Stop playback" title="停止 (ESC)">
                                     <span class="icon">⏹</span>
                                 </button>
-                                <button id="playBtn" class="btn-control play" disabled>
+                                <button id="playBtn" class="btn-control play" disabled aria-label="Play" title="播放 (空格)">
                                     <span class="icon">▶</span>
                                 </button>
-                                <button id="pauseBtn" class="btn-control pause" disabled>
+                                <button id="pauseBtn" class="btn-control pause" disabled aria-label="Pause" title="暂停">
                                     <span class="icon">⏸</span>
                                 </button>
                             </div>
 
                             <!-- Seek Bar -->
                             <div class="seek-container">
-                                <input type="range" id="seekBar" class="seek-slider" value="0" min="0" max="100" disabled>
+                                <input type="range" id="seekBar" class="seek-slider" value="0" min="0" max="100" disabled aria-label="Seek position" title="拖动跳转">
                                 <div class="time-display">
                                     <span id="currentTime">0:00</span>
                                     <span class="time-separator">/</span>
@@ -189,29 +213,29 @@
                         </div>
 
                         <!-- Secondary Controls -->
-                        <div class="secondary-controls">
+                        <div class="secondary-controls" role="group" aria-label="Audio settings">
                             <!-- Volume -->
                             <div class="control-group">
-                                <label class="control-label">
+                                <label class="control-label" for="volumeSlider">
                                     🔊 音量
                                     <span id="volumeValue" class="control-value">80%</span>
                                 </label>
-                                <input type="range" id="volumeSlider" class="range-slider" value="80" min="0" max="100">
+                                <input type="range" id="volumeSlider" class="range-slider" value="80" min="0" max="100" aria-label="Master volume" title="主音量">
                             </div>
 
                             <!-- Speed -->
                             <div class="control-group">
-                                <label class="control-label">
+                                <label class="control-label" for="speedSlider">
                                     ⚡ 速度
                                     <span id="speedValue" class="control-value">1.0x</span>
                                 </label>
-                                <input type="range" id="speedSlider" class="range-slider" value="100" min="50" max="200" step="10">
+                                <input type="range" id="speedSlider" class="range-slider" value="100" min="50" max="200" step="10" aria-label="Playback speed" title="播放速度">
                             </div>
 
                             <!-- Loop Toggle -->
                             <div class="control-group checkbox-group">
                                 <label class="checkbox-label">
-                                    <input type="checkbox" id="loopCheckbox">
+                                    <input type="checkbox" id="loopCheckbox" aria-label="Loop playback">
                                     <span class="checkmark"></span>
                                     <span class="label-text">🔁 循环播放</span>
                                 </label>
@@ -271,10 +295,15 @@
     </div>
 
     <!-- Toast Notification -->
-    <div id="toast" class="toast">
+    <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true">
         <div class="toast-content">
             <span id="toastMessage"></span>
         </div>
+    </div>
+
+    <!-- Screen Reader Announcements (Hidden ARIA Live Region) -->
+    <div aria-live="polite" aria-atomic="true" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);">
+        <span id="srAnnounce"></span>
     </div>
 
     <!-- Audio Elements (Hidden) -->

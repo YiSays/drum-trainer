@@ -6,7 +6,6 @@ YouTube Audio Downloader
 
 import os
 import re
-import datetime
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 import yt_dlp
@@ -80,12 +79,7 @@ class YouTubeDownloader:
         if not url or not self._is_valid_youtube_url(url):
             raise ValueError(f"无效的 YouTube URL: {url}")
 
-        # 创建时间戳目录
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        temp_dir = self.output_dir / timestamp
-        temp_dir.mkdir(parents=True, exist_ok=True)
-
-        # yt-dlp 配置
+        # yt-dlp 配置 - 下载到 output_dir 根目录，不创建子文件夹
         ydl_opts = {
             # 音频提取配置
             'format': 'bestaudio/best',
@@ -94,11 +88,11 @@ class YouTubeDownloader:
             # 播放列表处理 - 如果是播放列表，只处理第一个视频
             'playlistend': 1,
             'extract_flat': 'in_playlist',  # 提取播放列表中的单个视频
-            # 输出配置
-            'outtmpl': str(temp_dir / '%(title)s.%(ext)s'),
+            # 输出配置 - 直接输出到 output_dir 根目录
+            'outtmpl': str(self.output_dir / '%(title)s.%(ext)s'),
             # 保存信息到文件
             'writethumbnail': False,
-            'writeinfojson': True,  # 保存元数据
+            'writeinfojson': False,  # 不保存 info.json
             'writesubtitles': False,
             'writeautomaticsub': False,
             # 进度回调
@@ -113,7 +107,7 @@ class YouTubeDownloader:
 
         try:
             print(f"🎵 开始下载: {url}")
-            print(f"💾 保存目录: {temp_dir}")
+            print(f"💾 保存目录: {self.output_dir}")
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
@@ -134,11 +128,15 @@ class YouTubeDownloader:
                 else:
                     output_name = self.sanitize_filename(title)
 
-                # 查找实际下载的文件
-                downloaded_files = list(temp_dir.glob(f"{title}.*"))
+                # 查找实际下载的文件 (在 output_dir 根目录)
+                downloaded_files = list(self.output_dir.glob(f"{title}.*"))
                 if not downloaded_files:
                     # 可能是文件名被截断，尝试其他方式查找
-                    downloaded_files = list(temp_dir.glob("*"))
+                    downloaded_files = list(self.output_dir.glob("*"))
+                    # 过滤出最近修改的文件
+                    downloaded_files = [f for f in downloaded_files if f.is_file()]
+                    if downloaded_files:
+                        downloaded_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
 
                 if not downloaded_files:
                     raise Exception("下载成功但未找到文件")
@@ -146,7 +144,7 @@ class YouTubeDownloader:
                 downloaded_file = downloaded_files[0]
 
                 # 重命名文件为规范名称
-                final_path = temp_dir / f"{output_name}{downloaded_file.suffix}"
+                final_path = self.output_dir / f"{output_name}{downloaded_file.suffix}"
                 if final_path != downloaded_file:
                     downloaded_file.rename(final_path)
                 else:
@@ -157,21 +155,11 @@ class YouTubeDownloader:
                     "duration": duration,
                     "title": title,
                     "original_url": original_url,
-                    "timestamp": timestamp,
+                    "timestamp": "direct",
                 }
 
                 if thumbnail:
                     result["thumbnail"] = thumbnail
-
-                # 保存 info.json
-                try:
-                    import json
-                    info_file = temp_dir / "info.json"
-                    with open(info_file, 'w', encoding='utf-8') as f:
-                        json.dump(result, f, ensure_ascii=False, indent=2)
-                    print(f"💾 信息已保存到: {info_file}")
-                except Exception as e:
-                    print(f"⚠️ 无法保存 info.json: {e}")
 
                 print(f"✅ 下载完成: {final_path.name}")
                 print(f"   时长: {duration} 秒")
@@ -217,57 +205,6 @@ class YouTubeDownloader:
             if re.match(pattern, url, re.IGNORECASE):
                 return True
         return False
-
-    def get_download_info(self, timestamp: str) -> Optional[Dict[str, any]]:
-        """
-        获取指定时间戳的下载信息
-
-        Args:
-            timestamp: 下载时间戳 (YYYYMMDD_HHMMSS)
-
-        Returns:
-            下载信息字典，如果不存在返回 None
-        """
-        download_dir = self.output_dir / timestamp
-        if not download_dir.exists():
-            return None
-
-        info_file = download_dir / "info.json"
-        if info_file.exists():
-            import json
-            with open(info_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-
-        return None
-
-    def list_downloads(self) -> list[Dict[str, any]]:
-        """
-        列出所有下载记录
-
-        Returns:
-            下载记录列表
-        """
-        downloads = []
-
-        for item in self.output_dir.iterdir():
-            if item.is_dir():
-                info = self.get_download_info(item.name)
-                if info:
-                    downloads.append(info)
-                else:
-                    # 检查是否有音频文件
-                    audio_files = list(item.glob("*.m4a"))
-                    audio_files.extend(item.glob("*.mp3"))
-                    audio_files.extend(item.glob("*.wav"))
-                    if audio_files:
-                        downloads.append({
-                            "timestamp": item.name,
-                            "file_count": len(audio_files),
-                        })
-
-        # 按时间倒序排序
-        downloads.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
-        return downloads
 
 
 def download_audio_from_youtube(
