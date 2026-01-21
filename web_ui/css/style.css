@@ -75,10 +75,6 @@
     --skeleton-bg: rgba(255, 255, 255, 0.05);
     --skeleton-shimmer: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
 
-    /* Visual Metronome */
-    --metronome-beat-size: 16px;
-    --metronome-beat-gap: 8px;
-
     /* Track Type Colors - Enhanced for visual coding */
     --track-drum: #ef4444;
     --track-drum-bg: rgba(239, 68, 68, 0.15);
@@ -625,7 +621,7 @@ body {
     appearance: none;
     width: 4px;
     height: 40px;
-    background: var(--bg-tertiary);
+    background: #374151; /* Same light-grey as seek bar for better visibility */
     border-radius: 2px;
     outline: none;
     cursor: pointer;
@@ -684,7 +680,7 @@ body {
 .track-volume-slider::-moz-range-track {
     width: 100%;
     height: 100%;
-    background: var(--bg-tertiary);
+    background: #374151; /* Same light-grey as seek bar for better visibility */
     border-radius: 2px;
 }
 
@@ -692,7 +688,7 @@ body {
 .track-volume-slider::-webkit-slider-runnable-track {
     width: 100%;
     height: 100%;
-    background: var(--bg-tertiary);
+    background: #374151; /* Same light-grey as seek bar for better visibility */
     border-radius: 2px;
 }
 
@@ -702,7 +698,7 @@ body {
     height: 6px;
     transform: rotate(-90deg);
     -webkit-appearance: none;
-    background: var(--bg-tertiary);
+    background: #374151; /* Same light-grey as seek bar for better visibility */
     border-radius: 3px;
     outline: none;
 }
@@ -807,6 +803,100 @@ body {
     color: var(--text-muted);
     font-size: 1.125rem;
     font-weight: 500;
+}
+
+/* Song Info Bar - Compact preview info that persists */
+.song-info-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(251, 191, 36, 0.1));
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    margin-bottom: var(--space-md);
+    backdrop-filter: blur(8px);
+}
+
+.song-info-icon {
+    font-size: 1.25rem;
+    filter: drop-shadow(0 0 4px var(--primary-glow));
+}
+
+.song-info-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-md);
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+}
+
+.song-info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.song-info-label {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+}
+
+.song-info-value {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    font-weight: 600;
+    font-family: var(--font-mono);
+}
+
+.song-info-value.truncated {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.song-info-source {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    background: rgba(139, 92, 246, 0.25);
+    color: var(--primary-light);
+    border-radius: 999px;
+    font-weight: 600;
+    border: 1px solid rgba(139, 92, 246, 0.4);
+}
+
+/* Compact badge styles for file type */
+.file-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: rgba(251, 191, 36, 0.15);
+    color: var(--accent);
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+/* Info bar with icon and value */
+.info-bar-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.info-bar-icon {
+    opacity: 0.7;
 }
 
 /* Preview Info in Now Playing Card - Redesigned */
@@ -1270,7 +1360,7 @@ body {
 .range-slider {
     width: 100%;
     height: 6px;
-    background: var(--bg-tertiary);
+    background: #374151; /* Same light-grey as seek bar for better visibility */
     border-radius: var(--radius-full);
     outline: none;
     -webkit-appearance: none;
@@ -1362,28 +1452,6 @@ body {
     align-items: center;
     gap: var(--space-md);
     margin-bottom: var(--space-lg);
-}
-
-.metronome-visual {
-    display: flex;
-    align-items: center;
-    gap: var(--space-xs);
-}
-
-.beat-indicator {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: var(--bg-tertiary);
-    border: 2px solid var(--glass-border);
-    transition: all 0.1s ease;
-}
-
-.metronome-visual.beat .beat-indicator {
-    background: var(--accent);
-    border-color: var(--accent);
-    box-shadow: 0 0 15px var(--accent-glow);
-    transform: scale(1.3);
 }
 
 .mix-section h4 {
@@ -1860,103 +1928,8 @@ body {
 }
 
 /* ============================================
-   Visual Metronome Component
+   Audio Visualizer Component
    ============================================ */
-
-.metronome-card {
-    margin-top: var(--space-md);
-}
-
-.metronome-visual-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-lg);
-    padding: var(--space-lg);
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: var(--radius-lg);
-}
-
-.metronome-visual {
-    display: flex;
-    align-items: center;
-    gap: var(--metronome-beat-gap);
-}
-
-.beat-dot {
-    width: var(--metronome-beat-size);
-    height: var(--metronome-beat-size);
-    border-radius: 50%;
-    background: var(--bg-tertiary);
-    border: 2px solid var(--glass-border);
-    transition: all 100ms ease;
-    position: relative;
-}
-
-.beat-dot::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 0;
-    height: 0;
-    border-radius: 50%;
-    background: var(--accent);
-    opacity: 0;
-    transition: all 100ms ease;
-}
-
-/* Active beat states */
-.beat-dot.active {
-    background: var(--accent);
-    border-color: var(--accent);
-    box-shadow: 0 0 15px var(--accent-glow);
-    transform: scale(1.3);
-}
-
-.beat-dot.active::after {
-    width: 8px;
-    height: 8px;
-    opacity: 1;
-}
-
-/* Accent beat (first beat of measure) */
-.beat-dot.active.accent {
-    background: var(--primary);
-    border-color: var(--primary);
-    box-shadow: 0 0 25px var(--primary-glow);
-    transform: scale(1.5);
-}
-
-.beat-dot.active.accent::after {
-    background: var(--primary-light);
-    width: 10px;
-    height: 10px;
-}
-
-/* Staggered animation for beat dots */
-@keyframes beatPulse {
-    0%, 100% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.4); opacity: 0.8; }
-}
-
-.beat-dot.pulsing {
-    animation: beatPulse 300ms ease;
-}
-
-.metronome-info {
-    display: flex;
-    align-items: center;
-    gap: var(--space-lg);
-    font-size: 0.95rem;
-    color: var(--text-secondary);
-}
-
-.metronome-bpm-display {
-    font-family: var(--font-mono);
-    color: var(--primary-light);
-    font-weight: 600;
     padding: var(--space-xs) var(--space-md);
     background: rgba(139, 92, 246, 0.1);
     border-radius: var(--radius-full);
@@ -2205,19 +2178,6 @@ input[title]:focus::after {
 }
 
 /* ============================================
-   Metronome Card Animation
-   ============================================ */
-
-@keyframes metronomeBeat {
-    0%, 100% { transform: translateY(0) scale(1); }
-    50% { transform: translateY(-5px) scale(1.02); }
-}
-
-.metronome-card.beat-active .metronome-visual-container {
-    animation: metronomeBeat 150ms ease;
-}
-
-/* ============================================
    Track List Container Enhancements
    ============================================ */
 
@@ -2435,25 +2395,6 @@ input[title]:focus::after {
    ============================================ */
 
 @media (max-width: 480px) {
-    .metronome-visual-container {
-        padding: var(--space-md);
-        gap: var(--space-md);
-    }
-
-    .metronome-visual {
-        gap: 6px;
-    }
-
-    .beat-dot {
-        width: 14px;
-        height: 14px;
-    }
-
-    .metronome-info {
-        flex-direction: column;
-        gap: var(--space-sm);
-    }
-
     /* Stacking controls on very small screens */
     .main-controls {
         flex-wrap: wrap;

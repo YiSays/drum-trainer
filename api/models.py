@@ -61,3 +61,5 @@ class HealthResponse(BaseModel):
     timestamp: str
     device: str
     model_loaded: bool
+    default_model: Optional[str] = None
+    shifts: Optional[int] = None

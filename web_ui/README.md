@@ -26,7 +26,6 @@ A modern web interface for the Drum Trainer project, featuring:
 - **Real-time waveform visualization**: Using Web Audio API
 
 ### 3. Practice Mode
-- **Count-in / Metronome**: 4-beat visual metronome
 - **Multi-track mixing**: Play drums + backing track simultaneously
   - Select drum track
   - Select backing track (e.g., bass track)
@@ -98,7 +97,6 @@ http://localhost:8000/ui
 │                              │ └──────────────────┘ │
 │                              │ ┌──────────────────┐ │
 │                              │ │ 🎯 Practice Mode │ │
-│                              │ │ 🎵 Count-in      │ │
 │                              │ │ 🎚️ Mix Mode      │ │
 │                              │ │   🥁 Drum: [sel] │ │
 │                              │ │   🎵 Back: [sel] │ │
@@ -218,15 +216,13 @@ The interface adapts to different screen sizes:
 3. **Load tracks**: Click "🔄 Refresh"
 4. **Select track**: Click on a track item
 5. **Play**: Press Space or click ▶️
-6. **Practice**: Use count-in metronome
-7. **Mix**: Select drum + backing tracks, click "▶️ 混音播放"
-8. **Analyze**: Click "📊 分析" on any track
+6. **Mix**: Select drum + backing tracks, click "▶️ Play Mix"
+7. **Analyze**: Click "📊 Analyze" on any track
 
 ## 🎼 Music Theory Integration
 
 ### BPM Display
 When analyzing tracks, BPM is shown in the UI. This is useful for:
-- Setting metronome tempo
 - Matching backing tracks
 - Practicing at specific speeds
 

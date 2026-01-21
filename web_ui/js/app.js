@@ -91,12 +91,6 @@ const elements = {
     speedValue: document.getElementById('speedValue'),
     loopCheckbox: document.getElementById('loopCheckbox'),
 
-    // Practice Mode
-    countInBtn: document.getElementById('countInBtn'),
-    metronomeVisual: document.getElementById('metronomeVisual'),
-    metronomeStatus: document.getElementById('metronomeStatus'),
-    metronomeBpm: document.getElementById('metronomeBpm'),
-
     // Unified now-playing content area (replaces previewInfo, nowPlaying, processingProgress)
     nowPlayingContent: document.getElementById('nowPlayingContent'),
     nowPlayingHeader: document.getElementById('nowPlayingHeader'),
@@ -131,7 +125,6 @@ let state = {
     isPlaying: false,
     isLooping: false,
     apiConnected: false,
-    metronomeInterval: null,
     uploadVisible: false,
     selectedFile: null,
     audioContext: null,
@@ -368,11 +361,6 @@ function setupEventListeners() {
         });
     }
 
-    // Count-in
-    if (elements.countInBtn) {
-        elements.countInBtn.addEventListener('click', startCountIn);
-    }
-
     // Audio events - Note: Individual track audio elements are created dynamically
     // The main audioPlayer is for backward compatibility but new multi-track system
     // uses dynamically created audio elements per track
@@ -551,13 +539,23 @@ async function loadTracks(options = {}) {
 
     try {
         console.log('Fetching tracks from:', `${API_BASE_URL}/tracks/list`);
-        const response = await fetch(`${API_BASE_URL}/tracks/list`, {
+
+        // Add timestamp to prevent browser caching
+        const url = `${API_BASE_URL}/tracks/list?t=${Date.now()}`;
+        console.log('Request URL with cache-busting:', url);
+
+        const response = await fetch(url, {
             method: 'GET',
             mode: 'cors',
             cache: 'no-cache',
+            headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+            }
         });
 
         console.log('Response status:', response.status);
+        console.log('Response headers:', Object.fromEntries(response.headers.entries()));
 
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -565,10 +563,12 @@ async function loadTracks(options = {}) {
 
         const data = await response.json();
         console.log('Received tracks:', data);
+        console.log('Track count:', data.length);
 
         state.tracks = data;
 
         if (!data || data.length === 0) {
+            console.log('No tracks found - showing empty state');
             elements.trackList.innerHTML = `
                 <div class="empty-state">
                     <div class="empty-icon">🎵</div>
@@ -576,6 +576,16 @@ async function loadTracks(options = {}) {
                     <p>点击右上角 + 按钮上传音频文件</p>
                 </div>
             `;
+            // Show upload panel if no tracks exist
+            if (elements.uploadPanel) {
+                elements.uploadPanel.classList.remove('hidden');
+                if (elements.uploadBtn) {
+                    elements.uploadBtn.disabled = false;
+                    elements.uploadBtn.textContent = '+ 上传';
+                }
+                state.uploadVisible = true;
+                state.uploadLocked = false;
+            }
             return;
         }
 
@@ -583,11 +593,43 @@ async function loadTracks(options = {}) {
         // Enable player controls
         enablePlayerControls(true);
 
+        // Fold upload panel if tracks already exist
+        // This makes sense when page loads and tracks are already separated
+        if (elements.uploadPanel) {
+            elements.uploadPanel.classList.add('hidden');
+            state.uploadVisible = false;
+            state.uploadLocked = true;
+            if (elements.uploadBtn) {
+                elements.uploadBtn.disabled = true;
+                elements.uploadBtn.textContent = '已处理';
+            }
+        }
+
+        // Find and set the original (non-separated) file for song info bar
+        // This ensures the song info bar persists after page reload
+        const originalFile = data.find(track => !track.is_separated);
+        if (originalFile) {
+            state.selectedFile = {
+                name: originalFile.name,
+                path: originalFile.path,
+                size: originalFile.size,
+                duration: originalFile.duration,
+                source: originalFile.source || 'upload',
+                isSeparated: false,
+            };
+            console.log('Found original file for song info bar:', originalFile.name);
+        }
+
         // Bug Fix #4: Show context-specific message
         if (options.showAddedMessage) {
             showToast(`✅ 成功加载 ${data.length} 个音轨`, 'success');
         } else {
             showToast(`成功加载 ${data.length} 个音轨`, 'success');
+        }
+
+        // Update now-playing display to show song info bar if we have an original file
+        if (state.selectedFile) {
+            updateNowPlayingDisplay();
         }
 
     } catch (error) {
@@ -911,6 +953,7 @@ async function clearSelection() {
         elements.uploadBtn.textContent = '+ 上传';
     }
     state.uploadVisible = true;
+    state.uploadLocked = false;
 
     // Clear preview from now-playing-card
     clearPreviewFromNowPlayingCard();
@@ -1168,7 +1211,7 @@ function pauseAllAudio() {
  * Enable/Disable Player Controls
  */
 function enablePlayerControls(enabled) {
-    const controls = [elements.playBtn, elements.pauseBtn, elements.stopBtn, elements.seekBar, elements.countInBtn];
+    const controls = [elements.playBtn, elements.pauseBtn, elements.stopBtn, elements.seekBar];
     controls.forEach(control => {
         if (control) control.disabled = !enabled;
     });
@@ -1804,7 +1847,6 @@ function stop() {
     updatePlayState();
     stopRealtimeVisualization();
     stopPeriodicSync();
-    resetVisualMetronome();
     showToast('已停止', 'info');
 }
 
@@ -2057,12 +2099,25 @@ function updateTotalTimeForSelectedTracks() {
 
 /**
  * Update the now-playing display to show all selected tracks with icons (minimal design)
+ * Also shows the song info bar to remind user which song they're working with
  */
 function updateNowPlayingDisplay() {
     if (!elements.nowPlayingContent) return;
 
+    // Generate song info bar if we have a selected file
+    let songInfoHTML = '';
+    if (state.selectedFile) {
+        songInfoHTML = generateSongInfoBar(state.selectedFile, state.selectedFile.source || 'upload', 'ready');
+    }
+
+    // If no tracks are selected, show just the song info bar + placeholder
     if (state.selectedTracks.length === 0) {
-        elements.nowPlayingContent.innerHTML = '<div class="placeholder-text">选择音轨开始播放</div>';
+        elements.nowPlayingContent.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+                ${songInfoHTML}
+                <div class="placeholder-text" style="margin-top: 8px;">选择音轨开始播放</div>
+            </div>
+        `;
         return;
     }
 
@@ -2082,8 +2137,11 @@ function updateNowPlayingDisplay() {
         .join(' ');
 
     elements.nowPlayingContent.innerHTML = `
-        <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center;">
-            ${badges}
+        <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+            ${songInfoHTML}
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center;">
+                ${badges}
+            </div>
         </div>
     `;
 }
@@ -2116,9 +2174,6 @@ function updatePlayState() {
         elements.playBtn.style.width = '';
         elements.playBtn.style.height = '';
     }
-
-    // Update metronome status
-    updateMetronomeStatus();
 
     // Stop button: disabled when not playing, enlarge when playing
     if (elements.stopBtn) {
@@ -2160,144 +2215,6 @@ function updatePlayState() {
             elements.pauseBtn.style.height = '';
             elements.pauseBtn.style.boxShadow = '';
         }
-    }
-}
-
-/**
- * Start Metronome Count-in (4 beats) with visual indicator
- */
-function startCountIn() {
-    if (state.metronomeInterval) {
-        clearInterval(state.metronomeInterval);
-    }
-
-    let beat = 0;
-    const beats = 4;
-
-    // Update metronome status
-    updateMetronomeStatus('counting');
-
-    showToast('开始计时... 4拍', 'success');
-
-    // Play metronome sound using Web Audio API
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-    const playClick = (isAccent) => {
-        const oscillator = audioCtx.createOscillator();
-        const gainNode = audioCtx.createGain();
-
-        oscillator.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
-
-        oscillator.frequency.value = isAccent ? 1000 : 800;
-        oscillator.type = 'sine';
-
-        gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-
-        oscillator.start(audioCtx.currentTime);
-        oscillator.stop(audioCtx.currentTime + 0.1);
-    };
-
-    state.metronomeInterval = setInterval(() => {
-        beat++;
-        const isAccent = beat === 1;
-
-        playClick(isAccent);
-
-        // Visual metronome animation
-        visualMetronomeBeat(beat, isAccent);
-
-        // Pulse animation on metronome card
-        if (elements.metronomeVisual?.parentElement?.parentElement?.parentElement) {
-            const metronomeCard = elements.metronomeVisual.parentElement.parentElement.parentElement;
-            metronomeCard.classList.add('beat-active');
-            setTimeout(() => metronomeCard.classList.remove('beat-active'), 150);
-        }
-
-        showToast(`拍子 ${beat}/${beats}`, 'success');
-
-        if (beat >= beats) {
-            clearInterval(state.metronomeInterval);
-            state.metronomeInterval = null;
-
-            // Update status after count-in completes
-            setTimeout(() => {
-                updateMetronomeStatus('ready');
-                // Auto-play after count-in
-                play();
-            }, 200);
-        }
-    }, 600); // 600ms per beat = 100 BPM
-}
-
-/**
- * Visual metronome beat indicator
- * Highlights beat dots in sequence with accent on first beat
- */
-function visualMetronomeBeat(beat, isAccent = false) {
-    if (!elements.metronomeVisual) return;
-
-    // Get all beat dots
-    const dots = elements.metronomeVisual.querySelectorAll('.beat-dot');
-    if (!dots.length) return;
-
-    // Reset all dots
-    dots.forEach(dot => {
-        dot.classList.remove('active', 'accent', 'pulsing');
-    });
-
-    // Activate current beat (with 1-based indexing)
-    const targetIndex = beat - 1;
-    if (targetIndex >= 0 && targetIndex < dots.length) {
-        const targetDot = dots[targetIndex];
-        targetDot.classList.add('active', 'pulsing');
-        if (isAccent) {
-            targetDot.classList.add('accent');
-        }
-    }
-}
-
-/**
- * Reset visual metronome
- */
-function resetVisualMetronome() {
-    if (!elements.metronomeVisual) return;
-
-    const dots = elements.metronomeVisual.querySelectorAll('.beat-dot');
-    dots.forEach(dot => {
-        dot.classList.remove('active', 'accent', 'pulsing');
-    });
-
-    updateMetronomeStatus('ready');
-}
-
-/**
- * Update metronome status display
- */
-function updateMetronomeStatus(status = 'ready') {
-    if (!elements.metronomeStatus) return;
-
-    let statusText = '就绪';
-    let bpmText = '-- BPM';
-
-    if (status === 'counting') {
-        statusText = '预备中...';
-    } else if (state.isPlaying && state.selectedTracks.length > 0) {
-        statusText = '播放中';
-        // Try to get BPM from analysis if available
-        const bpmValue = elements.statBpm?.textContent;
-        if (bpmValue && bpmValue !== '--') {
-            bpmText = `${bpmValue} BPM`;
-        }
-    } else if (status === 'ready') {
-        statusText = '就绪';
-    }
-
-    elements.metronomeStatus.textContent = statusText;
-
-    if (elements.metronomeBpm) {
-        elements.metronomeBpm.textContent = bpmText;
     }
 }
 
@@ -2670,6 +2587,8 @@ async function uploadFileForPreview(file) {
                 name: result.file_info.name,
                 size: result.file_info.size,
                 duration: result.file_info.duration,
+                source: 'upload',
+                isSeparated: false,
             };
 
             showToast('文件已上传，点击确认处理', 'success');
@@ -2720,50 +2639,65 @@ function showFilePreviewFromServer(fileInfo) {
 }
 
 /**
+ * Generate compact song info bar HTML
+ * Shows song info in a compact, persistent bar at the top of the now-playing card
+ */
+function generateSongInfoBar(fileInfo, source = 'upload', status = 'ready') {
+    const sizeMB = (fileInfo.size / (1024 * 1024)).toFixed(1);
+    const extension = fileInfo.name.split('.').pop() || '未知格式';
+    const truncatedName = fileInfo.name.length > 30 ? fileInfo.name.substring(0, 30) + '...' : fileInfo.name;
+
+    // Source badge
+    const sourceBadge = source === 'youtube'
+        ? '<span class="song-info-source">YouTube</span>'
+        : '<span class="song-info-source">本地</span>';
+
+    return `
+        <div class="song-info-bar">
+            <div class="song-info-icon">🎵</div>
+            <div class="song-info-details">
+                <div class="song-info-item">
+                    <span class="song-info-label">文件名</span>
+                    <span class="song-info-value truncated" title="${fileInfo.name}">${truncatedName}</span>
+                </div>
+                <div class="song-info-item">
+                    <span class="song-info-label">时长</span>
+                    <span class="song-info-value">${formatTime(fileInfo.duration)}</span>
+                </div>
+                <div class="song-info-item">
+                    <span class="song-info-label">格式</span>
+                    <span class="file-badge">${extension.toUpperCase()}</span>
+                </div>
+                ${sourceBadge}
+            </div>
+        </div>
+    `;
+}
+
+/**
  * Show preview information in the now-playing-card div
  * This is displayed when uploadPanel is folded
  */
 function showPreviewInNowPlayingCard(fileInfo, showProcessButton = true) {
     if (!elements.nowPlayingContent) return;
 
-    const sizeMB = (fileInfo.size / (1024 * 1024)).toFixed(1);
-    const extension = fileInfo.name.split('.').pop() || '未知格式';
+    const source = fileInfo.source || 'upload';
 
     // Determine button text and type based on source
-    const buttonText = '处理';
+    const buttonText = '开始分离';
     const buttonClass = 'btn-primary';
 
     const processButtonHTML = showProcessButton ? `
-        <div class="preview-actions-inline">
-            <button id="processNowBtn" class="${buttonClass}">${buttonText}</button>
+        <div style="display: flex; gap: 8px; margin-top: var(--space-md);">
+            <button id="processNowBtn" class="${buttonClass}" style="flex: 1;">${buttonText}</button>
         </div>
     ` : '';
 
     elements.nowPlayingContent.innerHTML = `
-        <div style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <div class="preview-title">文件已就绪</div>
-                    <div style="font-size: 0.9rem; color: var(--text-secondary); margin-top: 2px;">点击处理开始分离</div>
-                </div>
-            </div>
-            <div class="preview-details">
-                <div>
-                    <span class="detail-label">文件名</span>
-                    <span class="detail-value" title="${fileInfo.name}">${fileInfo.name.length > 20 ? fileInfo.name.substring(0, 20) + '...' : fileInfo.name}</span>
-                </div>
-                <div>
-                    <span class="detail-label">文件大小</span>
-                    <span class="detail-value">${sizeMB} MB</span>
-                </div>
-                <div>
-                    <span class="detail-label">时长</span>
-                    <span class="detail-value">${formatTime(fileInfo.duration)}</span>
-                </div>
-                <div>
-                    <span class="detail-label">格式</span>
-                    <span class="detail-value">${extension.toUpperCase()}</span>
-                </div>
+        <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+            ${generateSongInfoBar(fileInfo, source, 'ready')}
+            <div style="text-align: center; color: var(--text-muted); font-size: 0.95rem; margin-top: 4px;">
+                🎧 点击下方按钮开始分离处理
             </div>
             ${processButtonHTML}
         </div>
@@ -3068,17 +3002,26 @@ function showProcessingInNowPlayingCard(message, percentage, current, total) {
         ? `进度: ${current}/${total} (${Math.round((current / total) * 100)}%)`
         : '';
 
+    // Generate song info bar if we have a selected file
+    let songInfoHTML = '';
+    if (state.selectedFile) {
+        songInfoHTML = generateSongInfoBar(state.selectedFile, state.selectedFile.source || 'upload', 'processing');
+    }
+
     elements.nowPlayingContent.innerHTML = `
-        <div class="processing-content">
-            <div style="font-size: 1.25rem; font-weight: 700; color: var(--accent); margin-bottom: 12px;">
-                ⏳ ${displayMessage}
-            </div>
-            <div class="progress-bar-container">
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: ${progressWidth}%"></div>
+        <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+            ${songInfoHTML}
+            <div class="processing-content">
+                <div style="font-size: 1.25rem; font-weight: 700; color: var(--accent); margin-bottom: 12px;">
+                    ⏳ ${displayMessage}
                 </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${progressWidth}%"></div>
+                    </div>
+                </div>
+                ${details ? `<div style="margin-top: 8px; font-size: 0.9rem; color: var(--text-secondary);">${details}</div>` : ''}
             </div>
-            ${details ? `<div style="margin-top: 8px; font-size: 0.9rem; color: var(--text-secondary);">${details}</div>` : ''}
         </div>
     `;
 
@@ -3117,13 +3060,22 @@ async function updateAfterSeparation() {
 
     // Show success message in now-playing card before resetting
     if (elements.nowPlayingContent) {
+        // Generate song info bar if we have a selected file
+        let songInfoHTML = '';
+        if (state.selectedFile) {
+            songInfoHTML = generateSongInfoBar(state.selectedFile, state.selectedFile.source || 'upload', 'complete');
+        }
+
         elements.nowPlayingContent.innerHTML = `
-            <div class="processing-content">
-                <div style="font-size: 1.25rem; font-weight: 700; color: #22c55e; margin-bottom: 12px;">
-                    ✅ 分离完成!
-                </div>
-                <div style="font-size: 0.95rem; color: var(--text-secondary);">
-                    分离结果已加载到音轨库
+            <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+                ${songInfoHTML}
+                <div class="processing-content">
+                    <div style="font-size: 1.25rem; font-weight: 700; color: #22c55e; margin-bottom: 12px;">
+                        ✅ 分离完成!
+                    </div>
+                    <div style="font-size: 0.95rem; color: var(--text-secondary);">
+                        分离结果已加载到音轨库
+                    </div>
                 </div>
             </div>
         `;
@@ -3133,19 +3085,19 @@ async function updateAfterSeparation() {
         elements.nowPlayingHeader.textContent = '✅ 完成';
     }
 
-    // After a brief delay, show placeholder and track list
+    // After a brief delay, show track list with song info bar
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     // Hide processing progress in now-playing card
     hideProcessingInNowPlayingCard();
 
-    // Reset now-playing header and show placeholder
+    // Reset now-playing header
     if (elements.nowPlayingHeader) {
         elements.nowPlayingHeader.textContent = '🎶 现在播放';
     }
-    if (elements.nowPlayingContent) {
-        elements.nowPlayingContent.innerHTML = '<div class="placeholder-text">选择音轨开始播放</div>';
-    }
+
+    // Show track list with song info bar
+    updateNowPlayingDisplay();
 
     // Fold upload panel (set uploadVisible to false so panel hides)
     state.uploadVisible = false;
@@ -3275,7 +3227,8 @@ async function showYouTubePreview(downloadResult) {
         path: downloadResult.file_path,
         duration: duration,
         source: 'youtube',
-        isSeparated: false
+        isSeparated: false,
+        size: downloadResult.size || 0
     };
 
     // Hide upload panel (fold it)
@@ -3292,30 +3245,11 @@ async function showYouTubePreview(downloadResult) {
     // Update now-playing card with preview and Separate button
     if (elements.nowPlayingContent) {
         elements.nowPlayingContent.innerHTML = `
-            <div style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <div class="preview-title">YouTube 下载完成</div>
-                        <div style="font-size: 0.9rem; color: var(--text-secondary); margin-top: 2px;">点击播放预览，或分离处理</div>
-                    </div>
-                </div>
-                <div class="preview-details">
-                    <div>
-                        <span class="detail-label">文件名</span>
-                        <span class="detail-value" title="${filename}">${filename.length > 20 ? filename.substring(0, 20) + '...' : filename}</span>
-                    </div>
-                    <div>
-                        <span class="detail-label">时长</span>
-                        <span class="detail-value">${formatTime(duration)}</span>
-                    </div>
-                    <div>
-                        <span class="detail-label">来源</span>
-                        <span class="detail-value">YouTube</span>
-                    </div>
-                </div>
-                <div style="display: flex; gap: 8px;">
-                    <button id="playPreviewBtn" class="btn-secondary">▶ 播放预览</button>
-                    <button id="separateBtn" class="btn-primary">分离处理</button>
+            <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+                ${generateSongInfoBar(state.selectedFile, 'youtube', 'ready')}
+                <div style="display: flex; gap: 8px; margin-top: 8px;">
+                    <button id="playPreviewBtn" class="btn-secondary" style="flex: 1;">▶ 播放预览</button>
+                    <button id="separateBtn" class="btn-primary" style="flex: 1;">分离处理</button>
                 </div>
             </div>
         `;

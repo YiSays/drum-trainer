@@ -7,7 +7,7 @@
 - **Track Browser**: Browse and select audio tracks from the backend
 - **Audio Player**: Play/pause, seek, volume control, speed adjustment
 - **Waveform Visualization**: Real-time audio frequency visualization
-- **Practice Mode**: Multi-track mixing, metronome/count-in, loop playback
+- **Practice Mode**: Multi-track mixing, loop playback
 - **Music Analysis**: BPM detection, style recognition, mood analysis
 - **File Upload**: Upload audio files for drum separation via Demucs AI
 
@@ -259,7 +259,6 @@ This app uses Provider for state management:
 - [ ] Multi-track mixing
 - [ ] Loop functionality
 - [ ] Tempo adjustment
-- [ ] Metronome/count-in
 
 ### Phase 3: Integration
 - [ ] File upload UI

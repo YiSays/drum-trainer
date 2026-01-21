@@ -49,19 +49,43 @@ class YouTubeDownloader:
             cleaned = "audio"
         return cleaned
 
+    def normalize_url(self, url: str) -> str:
+        """
+        标准化 YouTube URL - 提取视频 ID 并生成干净的 URL
+
+        这会去除播放列表、推荐等额外参数，只保留视频 ID
+
+        Args:
+            url: 原始 YouTube URL
+
+        Returns:
+            标准化的 URL (格式: https://www.youtube.com/watch?v=VIDEO_ID)
+
+        Raises:
+            ValueError: 无法从 URL 提取视频 ID
+        """
+        video_id = self.extract_video_id(url)
+        if not video_id:
+            raise ValueError(f"无法从 URL 提取视频 ID: {url}")
+
+        # 返回标准的 YouTube URL 格式
+        return f"https://www.youtube.com/watch?v={video_id}"
+
     def download_audio(
         self,
         url: str,
         output_name: Optional[str] = None,
-        audio_format: str = "best"
+        audio_format: str = "best",
+        normalize: bool = True
     ) -> Dict[str, any]:
         """
         从 YouTube 下载音频
 
         Args:
-            url: YouTube 视频 URL
+            url: YouTube 视频 URL (支持多种格式)
             output_name: 输出文件名 (不含扩展名)，None 时使用视频标题
             audio_format: 音频格式 (best = 最佳可用质量)
+            normalize: 是否自动标准化 URL (提取视频 ID，去除播放列表参数)
 
         Returns:
             包含以下键的字典:
@@ -69,6 +93,7 @@ class YouTubeDownloader:
             - duration: 音频时长 (秒)
             - title: 视频标题
             - original_url: 原始 URL
+            - normalized_url: 标准化后的 URL (如果 normalize=True)
             - thumbnail: 封面图片 URL (可选)
 
         Raises:
@@ -78,6 +103,13 @@ class YouTubeDownloader:
         # 验证 URL
         if not url or not self._is_valid_youtube_url(url):
             raise ValueError(f"无效的 YouTube URL: {url}")
+
+        # 标准化 URL - 提取视频 ID，去除播放列表等额外参数
+        original_url = url
+        if normalize:
+            url = self.normalize_url(url)
+            print(f"🔗 标准化 URL: {original_url}")
+            print(f"   ↓ 使用: {url}")
 
         # yt-dlp 配置 - 下载到 output_dir 根目录，不创建子文件夹
         ydl_opts = {
@@ -158,6 +190,10 @@ class YouTubeDownloader:
                     "timestamp": "direct",
                 }
 
+                # 如果 URL 被标准化了，返回标准化后的 URL
+                if normalize and url != original_url:
+                    result["normalized_url"] = url
+
                 if thumbnail:
                     result["thumbnail"] = thumbnail
 
@@ -191,40 +227,100 @@ class YouTubeDownloader:
         elif d['status'] == 'finished':
             print(f"   下载完成，正在处理...")
 
+    def extract_video_id(self, url: str) -> Optional[str]:
+        """
+        从 YouTube URL 中提取视频 ID
+
+        支持的格式:
+        - https://www.youtube.com/watch?v=VIDEO_ID
+        - https://www.youtube.com/watch?v=VIDEO_ID&list=PLAYLIST_ID&start_radio=1&pp=...
+        - https://youtu.be/VIDEO_ID
+        - https://youtu.be/VIDEO_ID?list=PLAYLIST_ID
+
+        Args:
+            url: YouTube URL
+
+        Returns:
+            视频 ID (如: _BCtgSCulIU)，如果无法提取则返回 None
+        """
+        if not url:
+            return None
+
+        url = url.strip()
+
+        # 模式 1: youtu.be/VIDEO_ID (可能有查询参数)
+        youtu_be_match = re.search(r'youtu\.be/([a-zA-Z0-9_-]+)', url, re.IGNORECASE)
+        if youtu_be_match:
+            return youtu_be_match.group(1)
+
+        # 模式 2: youtube.com/watch?v=VIDEO_ID (可能有其他查询参数)
+        watch_match = re.search(r'youtube\.com/watch.*[?&]v=([a-zA-Z0-9_-]+)', url, re.IGNORECASE)
+        if watch_match:
+            return watch_match.group(1)
+
+        # 模式 3: youtube.com/embed/VIDEO_ID
+        embed_match = re.search(r'youtube\.com/embed/([a-zA-Z0-9_-]+)', url, re.IGNORECASE)
+        if embed_match:
+            return embed_match.group(1)
+
+        # 模式 4: 只有视频 ID 本身
+        if re.match(r'^[a-zA-Z0-9_-]{11}$', url):
+            return url
+
+        return None
+
     def _is_valid_youtube_url(self, url: str) -> bool:
-        """验证是否为有效的 YouTube URL (排除播放列表)"""
-        # 检查是否为播放列表URL - 拒绝播放列表
-        if 'youtube.com/playlist' in url.lower() or 'list=' in url:
+        """
+        验证是否为有效的 YouTube URL
+
+        支持的格式:
+        - 带有额外参数的 URL: https://www.youtube.com/watch?v=VIDEO_ID&list=PLAYLIST_ID&start_radio=1&pp=...
+        - 短 URL: https://youtu.be/VIDEO_ID
+        - 纯视频 ID: VIDEO_ID
+        """
+        # 检查是否为纯播放列表 URL (拒绝整个播放列表页面)
+        if 'youtube.com/playlist' in url.lower():
             return False
 
-        patterns = [
-            r'^(https?://)?(www\.)?(youtube\.com/watch\?v=|youtu\.be/).+$',
-            r'^(https?://)?(www\.)?youtube\.com/watch\?.*v=[a-zA-Z0-9_-]+',
-        ]
-        for pattern in patterns:
-            if re.match(pattern, url, re.IGNORECASE):
-                return True
-        return False
+        # 提取视频 ID 并验证
+        video_id = self.extract_video_id(url)
+        if not video_id:
+            return False
+
+        # 检查视频 ID 长度 (YouTube 视频 ID 通常是 11 个字符)
+        if len(video_id) < 6 or len(video_id) > 20:
+            return False
+
+        return True
 
 
 def download_audio_from_youtube(
     url: str,
     output_dir: str | Path = "storage/youtube",
-    output_name: Optional[str] = None
+    output_name: Optional[str] = None,
+    normalize: bool = True
 ) -> Dict[str, any]:
     """
     便捷函数：从 YouTube 下载音频
 
+    支持的 URL 格式:
+    - 标准 URL: https://www.youtube.com/watch?v=VIDEO_ID
+    - 复杂 URL: https://www.youtube.com/watch?v=VIDEO_ID&list=PLAYLIST_ID&start_radio=1&pp=...
+    - 短 URL: https://youtu.be/VIDEO_ID
+    - 嵌入 URL: https://www.youtube.com/embed/VIDEO_ID
+    - 纯视频 ID: VIDEO_ID
+
     Args:
-        url: YouTube 视频 URL
+        url: YouTube 视频 URL (支持多种格式)
         output_dir: 输出目录
         output_name: 输出文件名 (不含扩展名)
+        normalize: 是否自动标准化 URL (提取视频 ID，去除播放列表参数)
 
     Returns:
-        下载信息字典
+        下载信息字典 (包含 file_path, duration, title, original_url 等)
     """
     downloader = YouTubeDownloader(output_dir)
-    return downloader.download_audio(url, output_name)
+    return downloader.download_audio(url, output_name, normalize=normalize)
 
 
 if __name__ == "__main__":

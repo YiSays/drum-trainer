@@ -29,14 +29,18 @@ def main():
 @click.argument("input_file", type=click.Path(exists=True))
 @click.option("-o", "--output", default="output", help="输出目录")
 @click.option("--chunk-size", default=30.0, help="分段处理时长（秒）")
-def separate(input_file, output, chunk_size):
+@click.option("--model", default="htdemucs", type=click.Choice(["htdemucs", "htdemucs_ft", "htdemucs_6s"]), help="分离模型")
+@click.option("--shifts", default=1, type=int, help="时间偏移增强次数")
+def separate(input_file, output, chunk_size, model, shifts):
     """分离鼓声"""
     click.echo(f"🎵 分离鼓声: {input_file}")
     click.echo(f"输出目录: {output}")
+    click.echo(f"模型: {model}")
+    click.echo(f"时间偏移: {shifts}")
 
     try:
-        separator = DrumSeparator()
-        results = separator.separate(input_file, output, chunk_size)
+        separator = DrumSeparator(model_name=model)
+        results = separator.separate(input_file, output, chunk_size, shifts=shifts)
 
         click.echo("\n✅ 分离完成！")
         click.echo("\n生成的文件:")
@@ -143,16 +147,20 @@ def generate(input_file, output, style, complexity):
 @main.command()
 @click.argument("input_file", type=click.Path(exists=True))
 @click.option("-o", "--output", default="output", help="输出目录")
-def complete(input_file, output):
+@click.option("--model", default="htdemucs", type=click.Choice(["htdemucs", "htdemucs_ft", "htdemucs_6s"]), help="分离模型")
+@click.option("--shifts", default=1, type=int, help="时间偏移增强次数")
+def complete(input_file, output, model, shifts):
     """完整处理：分离 + 分析 + 生成"""
     click.echo(f"🚀 完整处理: {input_file}")
     click.echo(f"输出目录: {output}")
+    click.echo(f"模型: {model}")
+    click.echo(f"时间偏移: {shifts}")
 
     try:
         # 1. 分离
         click.echo("\n[1/3] 分离鼓声...")
-        separator = DrumSeparator()
-        separated = separator.separate(input_file, f"{output}/separated")
+        separator = DrumSeparator(model_name=model)
+        separated = separator.separate(input_file, f"{output}/separated", shifts=shifts)
 
         # 2. 分析
         click.echo("\n[2/3] 音乐分析...")

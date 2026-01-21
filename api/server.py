@@ -9,11 +9,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from pathlib import Path
 import torch
-import datetime
+import shutil
+import asyncio
+from datetime import datetime, timedelta
 
 # 导入端点
 from api.endpoints import separation, analysis, generation, tracks, youtube
 from api.models import HealthResponse
+
+# Upload directory configuration
+UPLOAD_DIR = Path("storage/uploaded")
+SEPARATED_DIR = UPLOAD_DIR / "separated"
+
+# Cleanup configuration
+CLEANUP_AGE_HOURS = 24  # Files older than this will be cleaned up on startup
 
 # 创建应用
 app = FastAPI(
@@ -56,6 +65,130 @@ app.include_router(tracks.router)
 app.include_router(youtube.router)
 
 
+# ============================================
+# Cleanup Utilities
+# ============================================
+
+def cleanup_old_uploads(max_age_hours: int = CLEANUP_AGE_HOURS) -> dict:
+    """
+    Clean up old files in storage/uploaded/ and storage/uploaded/separated/
+
+    Args:
+        max_age_hours: Delete files older than this many hours
+
+    Returns:
+        Dict with cleanup statistics
+    """
+    cutoff_time = datetime.now() - timedelta(hours=max_age_hours)
+    stats = {
+        "deleted_files": [],
+        "deleted_dirs": [],
+        "kept_files": [],
+        "errors": [],
+        "total_deleted_size": 0
+    }
+
+    # Ensure directories exist
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    SEPARATED_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Clean up files in uploaded/
+    for file_path in UPLOAD_DIR.iterdir():
+        if file_path.is_file() and file_path.name != "temp.mp3":
+            try:
+                mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+                if mtime < cutoff_time:
+                    file_size = file_path.stat().st_size
+                    file_path.unlink()
+                    stats["deleted_files"].append(str(file_path.name))
+                    stats["total_deleted_size"] += file_size
+                else:
+                    stats["kept_files"].append(str(file_path.name))
+            except Exception as e:
+                stats["errors"].append(f"Error deleting {file_path}: {str(e)}")
+
+    # Clean up files in separated/
+    if SEPARATED_DIR.exists():
+        for file_path in SEPARATED_DIR.iterdir():
+            if file_path.is_file():
+                try:
+                    mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+                    if mtime < cutoff_time:
+                        file_size = file_path.stat().st_size
+                        file_path.unlink()
+                        stats["deleted_files"].append(f"separated/{file_path.name}")
+                        stats["total_deleted_size"] += file_size
+                    else:
+                        stats["kept_files"].append(f"separated/{file_path.name}")
+                except Exception as e:
+                    stats["errors"].append(f"Error deleting {file_path}: {str(e)}")
+
+    # Try to delete empty separated/ directory
+    try:
+        if SEPARATED_DIR.exists() and not any(SEPARATED_DIR.iterdir()):
+            SEPARATED_DIR.rmdir()
+            stats["deleted_dirs"].append("separated/")
+    except Exception:
+        pass  # Directory not empty or other error
+
+    return stats
+
+
+@app.on_event("startup")
+async def startup_event():
+    """
+    Clean up old files on server startup
+    """
+    print("=" * 60)
+    print("🚀 Startup: Cleaning up old files...")
+    print(f"   Age threshold: {CLEANUP_AGE_HOURS} hours")
+
+    # Create directories if they don't exist
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    SEPARATED_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Clean up old files
+    try:
+        stats = cleanup_old_uploads(CLEANUP_AGE_HOURS)
+
+        if stats["deleted_files"] or stats["deleted_dirs"]:
+            print(f"   ✅ Deleted {len(stats['deleted_files'])} files")
+            for f in stats["deleted_files"]:
+                print(f"      - {f}")
+            if stats["total_deleted_size"] > 0:
+                size_mb = stats["total_deleted_size"] / (1024 * 1024)
+                print(f"   🗑️  Freed {size_mb:.1f} MB")
+
+        if stats["kept_files"]:
+            print(f"   📦 Kept {len(stats['kept_files'])} files (recent)")
+
+        if stats["errors"]:
+            print(f"   ⚠️  Errors: {len(stats['errors'])}")
+            for e in stats["errors"]:
+                print(f"      - {e}")
+
+    except Exception as e:
+        print(f"   ⚠️  Cleanup error: {str(e)}")
+
+    print("=" * 60)
+
+
+@app.get("/cleanup", summary="手动清理旧文件", response_model=dict)
+async def manual_cleanup(max_age_hours: int = 24):
+    """
+    手动触发清理旧文件（保留最近N小时的文件）
+
+    Args:
+        max_age_hours: 保留多少小时内的文件，默认24小时
+    """
+    stats = cleanup_old_uploads(max_age_hours)
+    return {
+        "status": "success",
+        "message": f"清理完成",
+        **stats
+    }
+
+
 @app.get("/", summary="根路径", response_model=HealthResponse)
 async def root():
     """
@@ -72,9 +205,11 @@ async def root():
 
     return {
         "status": "running",
-        "timestamp": datetime.datetime.now().isoformat(),
+        "timestamp": datetime.now().isoformat(),
         "device": device,
-        "model_loaded": model_loaded
+        "model_loaded": model_loaded,
+        "default_model": "htdemucs",
+        "shifts": 1
     }
 
 
@@ -193,6 +328,10 @@ async def info():
         "metal_available": torch.backends.mps.is_available(),
         "cuda_available": torch.cuda.is_available(),
         "python_version": "3.10+",
+        "default_model": "htdemucs",
+        "available_models": ["htdemucs", "htdemucs_ft", "htdemucs_6s"],
+        "shifts": 1,
+        "model_cache_dir": "storage/models",
     }
     return info
 
@@ -212,7 +351,16 @@ async def serve_ui_index():
         raise HTTPException(404, "Web UI not found. Run setup first.")
 
     with open(index_path, "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read())
+        content = f.read()
+        # Add cache-busting header and prevent browser caching
+        return HTMLResponse(
+            content=content,
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            }
+        )
 
 
 @app.get("/ui/css/style.css", response_class=HTMLResponse, include_in_schema=False)
@@ -223,7 +371,13 @@ async def serve_ui_css():
         raise HTTPException(404, "CSS not found")
 
     with open(css_path, "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read(), media_type="text/css")
+        return HTMLResponse(
+            content=f.read(),
+            media_type="text/css",
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            }
+        )
 
 
 @app.get("/ui/js/app.js", response_class=HTMLResponse, include_in_schema=False)
@@ -234,7 +388,13 @@ async def serve_ui_js():
         raise HTTPException(404, "JavaScript not found")
 
     with open(js_path, "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read(), media_type="application/javascript")
+        return HTMLResponse(
+            content=f.read(),
+            media_type="application/javascript",
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            }
+        )
 
 
 if __name__ == "__main__":
@@ -253,11 +413,16 @@ if __name__ == "__main__":
     else:
         print("  - 设备: CPU (性能较慢)")
 
+    print(f"  - 默认模型: htdemucs (4声道)")
+    print(f"  - 存储目录: storage/uploaded/")
     print("")
     print("🔗 API 地址: http://localhost:8000")
     print("📄 文档: http://localhost:8000/docs")
     print("📝 ReDoc: http://localhost:8000/redoc")
     print("🖥️  Web UI: http://localhost:8000/ui")
+    print("")
+    print("🧹 清理: 老文件(>24小时)将在启动时自动清理")
+    print("      手动清理: GET /cleanup?max_age_hours=N")
     print("")
     print("=" * 60)
 

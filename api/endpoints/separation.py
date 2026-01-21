@@ -26,7 +26,9 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 @router.post("/separate", summary="分离鼓声")
 async def separate_drums(
     file: UploadFile = File(..., description="音频文件 (mp3, wav, flac)"),
-    chunk_duration: float = Form(30.0, description="分段处理时长（秒），避免内存溢出")
+    chunk_duration: float = Form(30.0, description="分段处理时长（秒），避免内存溢出"),
+    model: str = Form("htdemucs", description="分离模型: htdemucs (4声道) 或 htdemucs_ft (微调4声道) 或 htdemucs_6s (6声道)"),
+    shifts: int = Form(1, description="时间偏移增强次数")
 ):
     """
     分离音频中的鼓声部分
@@ -36,6 +38,14 @@ async def separate_drums(
     2. **复制**到 storage/uploaded/separated/temp.mp3 进行分离（不删除原文件）
     3. 运行分离 (结果保存在 separated/ 目录)
     4. 删除 temp.mp3
+
+    **模型选择**:
+    - `htdemucs`: 4声道分离 (drums, bass, other, vocals) - **推荐**
+    - `htdemucs_ft`: 微调版4声道分离 (drums, bass, other, vocals)
+    - `htdemucs_6s`: 6声道分离 (drums, bass, piano, guitar, other, vocals)
+
+    **质量增强**:
+    - `shifts`: 时间偏移增强次数
     """
     start_time = time.time()
 
@@ -60,8 +70,8 @@ async def separate_drums(
 
     try:
         # Step 3: Run separation - save results to separated_dir
-        separator = DrumSeparator()
-        results = separator.separate(temp_file, separated_dir, chunk_duration=chunk_duration)
+        separator = DrumSeparator(model_name=model)
+        results = separator.separate(temp_file, separated_dir, chunk_duration=chunk_duration, shifts=shifts)
 
         processing_time = time.time() - start_time
 
@@ -87,12 +97,16 @@ async def separate_drums(
 
 @router.post("/preview", summary="快速预览")
 async def preview_separation(
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    shifts: int = Form(1, description="时间偏移增强次数")
 ):
     """
     快速预览分离结果（不保存文件）
 
     只分析前30秒，返回各声部时长信息
+
+    **质量增强**:
+    - `shifts`: 时间偏移增强次数，值越高分离质量越好（默认2）
     """
     temp_file = UPLOAD_DIR / f"preview_{file.filename}"
     try:
@@ -103,7 +117,7 @@ async def preview_separation(
 
     try:
         separator = DrumSeparator()
-        durations = separator.preview_sources(temp_file)
+        durations = separator.preview_sources(temp_file, shifts=shifts)
 
         # 清理
         temp_file.unlink(missing_ok=True)
@@ -141,7 +155,9 @@ async def clear_uploaded():
 @router.post("/separate_by_name", summary="分离已上传的文件")
 async def separate_by_name(
     filename: str = Form(..., description="要分离的文件名"),
-    chunk_duration: float = Form(30.0, description="分段处理时长（秒）")
+    chunk_duration: float = Form(30.0, description="分段处理时长（秒）"),
+    model: str = Form("htdemucs", description="分离模型: htdemucs (4声道) 或 htdemucs_ft (微调4声道) 或 htdemucs_6s (6声道)"),
+    shifts: int = Form(1, description="时间偏移增强次数")
 ):
     """
     分离已上传到 storage/uploaded/ 的文件
@@ -150,6 +166,14 @@ async def separate_by_name(
 
     文件将**复制**到 storage/uploaded/separated/temp.mp3 进行分离（不删除原文件）
     分离结果保存在 storage/uploaded/separated/ 目录
+
+    **模型选择**:
+    - `htdemucs`: 4声道分离 (drums, bass, other, vocals) - **推荐**
+    - `htdemucs_ft`: 微调版4声道分离 (drums, bass, other, vocals)
+    - `htdemucs_6s`: 6声道分离 (drums, bass, piano, guitar, other, vocals)
+
+    **质量增强**:
+    - `shifts`: 时间偏移增强次数
     """
     start_time = time.time()
 
@@ -168,8 +192,8 @@ async def separate_by_name(
 
     try:
         # Run separation - save results to separated_dir
-        separator = DrumSeparator()
-        results = separator.separate(temp_file, separated_dir, chunk_duration=chunk_duration)
+        separator = DrumSeparator(model_name=model)
+        results = separator.separate(temp_file, separated_dir, chunk_duration=chunk_duration, shifts=shifts)
 
         processing_time = time.time() - start_time
 
@@ -194,7 +218,9 @@ async def separate_by_name(
 @router.post("/separate_by_name_stream", summary="分离已上传的文件（流式进度）")
 async def separate_by_name_stream(
     filename: str = Form(..., description="要分离的文件名"),
-    chunk_duration: float = Form(30.0, description="分段处理时长（秒）")
+    chunk_duration: float = Form(30.0, description="分段处理时长（秒）"),
+    model: str = Form("htdemucs", description="分离模型: htdemucs (4声道) 或 htdemucs_ft (微调4声道) 或 htdemucs_6s (6声道)"),
+    shifts: int = Form(1, description="时间偏移增强次数")
 ):
     """
     分离已上传到 storage/uploaded/ 的文件，并通过 SSE 流式返回进度
@@ -204,9 +230,17 @@ async def separate_by_name_stream(
     **进度阶段**:
     - loading: 加载音频文件
     - chunk: 分段处理 (N/总片段数)
-    - merging: 合并结果 (N/7 或 N/9)
-    - saving: 保存文件 (N/7 或 N/9)
+    - merging: 合并结果 (N/6 或 N/4)
+    - saving: 保存文件 (N/6 或 N/4)
     - complete: 完成
+
+    **模型选择**:
+    - `htdemucs`: 4声道分离 (drums, bass, other, vocals) - **推荐**
+    - `htdemucs_ft`: 微调版4声道分离 (drums, bass, other, vocals)
+    - `htdemucs_6s`: 6声道分离 (drums, bass, piano, guitar, other, vocals)
+
+    **质量增强**:
+    - `shifts`: 时间偏移增强次数
 
     使用 SSE (Server-Sent Events) 流式返回进度，客户端需监听 text/event-stream
     """
@@ -248,11 +282,12 @@ async def separate_by_name_stream(
         def run_separation():
             nonlocal separation_completed, separation_result, separation_error
             try:
-                separator = DrumSeparator()
+                separator = DrumSeparator(model_name=model)
                 results = separator.separate(
                     temp_file,
                     separated_dir,
                     chunk_duration=chunk_duration,
+                    shifts=shifts,
                     progress_callback=progress_callback
                 )
                 separation_result = results

@@ -26,11 +26,20 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 @router.post("/download", summary="下载 YouTube 音频")
 async def download_youtube_audio(
-    url: str = Body(..., description="YouTube 视频 URL"),
+    url: str = Body(..., description="YouTube 视频 URL (支持各种格式，包括带播放列表参数的 URL)"),
     name: Optional[str] = Body(None, description="输出文件名 (可选)")
 ):
     """
     从 YouTube 下载音频并保存到 storage/uploaded/
+
+    **支持的 URL 格式**:
+    - 标准 URL: https://www.youtube.com/watch?v=VIDEO_ID
+    - 复杂 URL: https://www.youtube.com/watch?v=VIDEO_ID&list=PLAYLIST_ID&start_radio=1&pp=...
+    - 短 URL: https://youtu.be/VIDEO_ID
+    - 嵌入 URL: https://www.youtube.com/embed/VIDEO_ID
+    - 纯视频 ID: VIDEO_ID
+
+    注意: 系统会自动提取视频 ID 并忽略播放列表、推荐等额外参数
 
     Args:
         url: YouTube 视频 URL
@@ -57,21 +66,37 @@ async def download_youtube_audio(
 
 @router.post("/separate", summary="下载并分离 YouTube 音频")
 async def separate_youtube_audio(
-    url: str = Body(..., description="YouTube 视频 URL"),
+    url: str = Body(..., description="YouTube 视频 URL (支持各种格式，包括带播放列表参数的 URL)"),
     name: Optional[str] = Body(None, description="输出文件名 (可选)"),
-    chunk_size: int = Body(30, description="音频分段处理时长 (秒)")
+    chunk_size: int = Body(30, description="音频分段处理时长 (秒)"),
+    model: str = Body("htdemucs_6s", description="分离模型: htdemucs_6s (6声道) 或 htdemucs (4声道)")
 ):
     """
     从 YouTube 下载音频并进行鼓声分离 (完整流程)
 
-    下载文件到 storage/uploaded/
-    移动到 storage/uploaded/separated/temp.mp3 进行分离
-    分离结果保存在 storage/uploaded/separated/ 目录
+    **支持的 URL 标准**:
+    - 标准 URL: https://www.youtube.com/watch?v=VIDEO_ID
+    - 复杂 URL: https://www.youtube.com/watch?v=VIDEO_ID&list=PLAYLIST_ID&start_radio=1&pp=...
+    - 短 URL: https://youtu.be/VIDEO_ID
+    - 嵌入 URL: https://www.youtube.com/embed/VIDEO_ID
+    - 纯视频 ID: VIDEO_ID
+
+    注意: 系统会自动提取视频 ID 并忽略播放列表、推荐等额外参数
+
+    **处理流程**:
+    1. 下载音频到 storage/uploaded/
+    2. 复制文件到 storage/uploaded/separated/temp.mp3 进行分离
+    3. 分离结果保存在 storage/uploaded/separated/ 目录
+
+    **模型选择**:
+    - `htdemucs_6s`: 6声道分离 (drums, bass, guitar, piano, other, vocals) - **推荐**
+    - `htdemucs`: 4声道分离 (drums, bass, other, vocals)
 
     Args:
         url: YouTube 视频 URL
         name: 输出文件名 (不含扩展名)
         chunk_size: 音频分段处理时长 (秒)
+        model: 分离模型
 
     Returns:
         下载信息、分离结果和文件路径
@@ -95,7 +120,7 @@ async def separate_youtube_audio(
         try:
             # 步骤 3: 分离鼓声
             print(f"步骤 3: 分离鼓声 (chunk_size={chunk_size}s)")
-            separator = DrumSeparator()
+            separator = DrumSeparator(model_name=model)
 
             # 检查音频时长，如果超过 chunk_size 则会自动分段处理
             audio_io = AudioIO()

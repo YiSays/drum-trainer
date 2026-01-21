@@ -34,9 +34,9 @@ class DrumSeparator:
 
         Args:
             model_name: Demucs 模型名称
-                - "htdemucs": Hybrid Transformer，最新最强，4声部分离 (drums, bass, other, vocals)
-                - "htdemucs_ft": 微调版本，4声部分离
-                - "htdemucs_6s": 6声部分离 (drums, bass, other, vocals, piano, guitar)
+                - "htdemucs": Hybrid Transformer，4声部分离 (drums, bass, other, vocals) - **推荐**
+                - "htdemucs_ft": 微调版本，4声部分离 (drums, bass, other, vocals)
+                - "htdemucs_6s": 6声部分离 (drums, bass, piano, guitar, other, vocals)
             device: 指定设备 (auto/metal/cpu/cuda)
             model_cache_dir: 模型缓存目录，默认为 storage/models
         """
@@ -113,7 +113,8 @@ class DrumSeparator:
 
     def separate(self, audio_path: str | Path, output_dir: str | Path,
                  chunk_duration: float = 30.0, clean_no_drums: bool = False,
-                 cutoff_freq: float = 180.0, progress_callback=None) -> dict:
+                 cutoff_freq: float = 180.0, progress_callback=None,
+                 shifts: int = 1) -> dict:
         """
         分离鼓声并保存结果
 
@@ -124,6 +125,7 @@ class DrumSeparator:
             clean_no_drums: 是否对no_drums应用高通滤波去除低频残留
             cutoff_freq: 高通滤波截止频率(Hz)，当clean_no_drums=True时使用
             progress_callback: 可选的进度回调函数，接收 (stage, current, total, message) 参数
+            shifts: 时间偏移增强次数（默认2），提高分离质量但增加处理时间
 
         Returns:
             包含输出文件路径的字典
@@ -150,7 +152,7 @@ class DrumSeparator:
 
         for i, (start, end) in enumerate(tqdm(slices, desc="分离进度")):
             chunk = audio[:, start:end]
-            chunk_results = self._separate_chunk(chunk, sr)
+            chunk_results = self._separate_chunk(chunk, sr, shifts=shifts)
             all_results.append(chunk_results)
 
             # Report chunk progress
@@ -170,9 +172,14 @@ class DrumSeparator:
 
         return final_results
 
-    def _separate_chunk(self, audio_chunk: np.ndarray, sr: int) -> dict:
+    def _separate_chunk(self, audio_chunk: np.ndarray, sr: int, shifts: int = 1) -> dict:
         """
         处理单个音频片段
+
+        Args:
+            audio_chunk: 音频片段
+            sr: 采样率
+            shifts: 时间偏移增强次数（默认2），提高分离质量
 
         Returns:
             分离结果字典，包含各声部的numpy数组
@@ -186,7 +193,8 @@ class DrumSeparator:
             sources = self.apply_model_fn(
                 self.model,
                 audio_tensor.unsqueeze(0).to(self.device),
-                device=self.device
+                device=self.device,
+                shifts=shifts,  # 启用时间偏移增强
             )
 
         # 转换回numpy
@@ -194,7 +202,7 @@ class DrumSeparator:
 
         # Demucs 声部顺序取决于模型:
         # 4-source: drums, bass, other, vocals
-        # 6-source: drums, bass, other, vocals, piano, guitar
+        # 6-source: drums, bass, other, vocals, guitar, piano
         num_sources = sources.shape[0]
 
         result = {
@@ -204,10 +212,10 @@ class DrumSeparator:
             "vocals": sources[3],
         }
 
-        # 6-source models have piano and guitar
+        # 6-source models have guitar and piano
         if num_sources >= 6:
-            result["piano"] = sources[4]
-            result["guitar"] = sources[5]
+            result["guitar"] = sources[4]
+            result["piano"] = sources[5]
 
         return result
 
@@ -231,46 +239,53 @@ class DrumSeparator:
         # 检查是否为6-source模型
         is_6_source = "piano" in results[0]
 
+        # 按模型类型设置总文件数和合并进度
+        if is_6_source:
+            total_merge_steps = 6  # drums, bass, piano, guitar, other, vocals
+        else:
+            total_merge_steps = 4  # drums, bass, other, vocals
+
         # 合并每个声部
         if progress_callback:
-            progress_callback("merging", 1, 7, "合并 drums...")
+            progress_callback("merging", 1, total_merge_steps, "合并 drums...")
         drums = np.concatenate([r["drums"] for r in results], axis=-1)
 
         if progress_callback:
-            progress_callback("merging", 2, 7, "合并 bass...")
+            progress_callback("merging", 2, total_merge_steps, "合并 bass...")
         bass = np.concatenate([r["bass"] for r in results], axis=-1)
 
-        if progress_callback:
-            progress_callback("merging", 3, 7, "合并 other...")
-        other = np.concatenate([r["other"] for r in results], axis=-1)
-
-        if progress_callback:
-            progress_callback("merging", 4, 7, "合并 vocals...")
-        vocals = np.concatenate([r["vocals"] for r in results], axis=-1)
-
-        # 6-source模型：合并piano和guitar
         if is_6_source:
             if progress_callback:
-                progress_callback("merging", 5, 9, "合并 piano...")
+                progress_callback("merging", 3, total_merge_steps, "合并 piano...")
             piano = np.concatenate([r["piano"] for r in results], axis=-1)
 
             if progress_callback:
-                progress_callback("merging", 6, 9, "合并 guitar...")
+                progress_callback("merging", 4, total_merge_steps, "合并 guitar...")
             guitar = np.concatenate([r["guitar"] for r in results], axis=-1)
 
-            original = drums + bass + piano + guitar + other + vocals
-            no_drums = bass + piano + guitar + other + vocals
-            no_vocals = drums + bass + piano + guitar + other
-            total_files = 9
-        else:
-            # 4-source模型
-            original = drums + bass + other + vocals  # 完整原曲
-            no_drums = bass + other + vocals           # 无鼓
-            no_vocals = drums + bass + other          # 无人声
-            total_files = 7
+            if progress_callback:
+                progress_callback("merging", 5, total_merge_steps, "合并 other...")
+            other = np.concatenate([r["other"] for r in results], axis=-1)
 
-        # 可选：no_drums后处理（高通滤波去除低频残留）
+            if progress_callback:
+                progress_callback("merging", 6, total_merge_steps, "合并 vocals...")
+            vocals = np.concatenate([r["vocals"] for r in results], axis=-1)
+        else:
+            if progress_callback:
+                progress_callback("merging", 3, total_merge_steps, "合并 other...")
+            other = np.concatenate([r["other"] for r in results], axis=-1)
+
+            if progress_callback:
+                progress_callback("merging", 4, total_merge_steps, "合并 vocals...")
+            vocals = np.concatenate([r["vocals"] for r in results], axis=-1)
+
+        # 不再需要计算 original, no_drums, no_vocals
+        # 如果需要可选的no_drums后处理，这里会保留计算但不保存
         if clean_no_drums:
+            if is_6_source:
+                no_drums = bass + piano + guitar + other + vocals
+            else:
+                no_drums = bass + other + vocals
             print(f"🔧 应用高通滤波去除低频残留 (cutoff={cutoff_freq}Hz)")
             no_drums = self._highpass_filter(no_drums, sr, cutoff_freq)
 
@@ -280,28 +295,22 @@ class DrumSeparator:
         # 保存各声部（统一使用WAV格式以确保兼容性）
         def save_with_progress(name: str, audio_data: np.ndarray, file_path: Path, current: int):
             if progress_callback:
-                progress_callback("saving", current, total_files, f"保存 {name}...")
+                progress_callback("saving", current, total_merge_steps, f"保存 {name}...")
             self.audio_io.save_audio(audio_data, file_path, sr)
             return file_path
 
-        files["original"] = save_with_progress("original", original, output_dir / "original.wav", 1)
+        # Always save the individual tracks
+        files["drums"] = save_with_progress("drums", drums, output_dir / "drums.wav", 1)
+        files["bass"] = save_with_progress("bass", bass, output_dir / "bass.wav", 2)
 
-        files["drum"] = save_with_progress("drum", drums, output_dir / "drum.wav", 2)
-
-        files["no_drums"] = save_with_progress("no_drums", no_drums, output_dir / "no_drums.wav", 3)
-
-        files["no_vocals"] = save_with_progress("no_vocals", no_vocals, output_dir / "no_vocals.wav", 4)
-
-        files["bass"] = save_with_progress("bass", bass, output_dir / "bass.wav", 5)
-
-        files["vocals"] = save_with_progress("vocals", vocals, output_dir / "vocals.wav", 6)
-
-        files["other"] = save_with_progress("other", other, output_dir / "other.wav", 7)
-
-        # 保存piano和guitar（如果为6-source模型）
         if is_6_source:
-            files["piano"] = save_with_progress("piano", piano, output_dir / "piano.wav", 8)
-            files["guitar"] = save_with_progress("guitar", guitar, output_dir / "guitar.wav", 9)
+            files["piano"] = save_with_progress("piano", piano, output_dir / "piano.wav", 3)
+            files["guitar"] = save_with_progress("guitar", guitar, output_dir / "guitar.wav", 4)
+            files["other"] = save_with_progress("other", other, output_dir / "other.wav", 5)
+            files["vocals"] = save_with_progress("vocals", vocals, output_dir / "vocals.wav", 6)
+        else:
+            files["other"] = save_with_progress("other", other, output_dir / "other.wav", 3)
+            files["vocals"] = save_with_progress("vocals", vocals, output_dir / "vocals.wav", 4)
 
         return {k: str(v) for k, v in files.items()}
 
@@ -322,9 +331,13 @@ class DrumSeparator:
         b, a = butter(4, normal_cutoff, btype='high', analog=False)
         return filtfilt(b, a, audio)
 
-    def preview_sources(self, audio_path: str | Path) -> dict:
+    def preview_sources(self, audio_path: str | Path, shifts: int = 1) -> dict:
         """
         快速预览分离结果（不保存文件）
+
+        Args:
+            audio_path: 输入音频文件
+            shifts: 时间偏移增强次数（默认2），提高分离质量
 
         Returns:
             各声部的音频数据字典
@@ -337,7 +350,7 @@ class DrumSeparator:
         if audio.shape[-1] > sr * 30:
             audio = audio[:, :sr * 30]
 
-        results = self._separate_chunk(audio, sr)
+        results = self._separate_chunk(audio, sr, shifts=shifts)
 
         # 返回时长信息（不返回完整音频数据）
         durations = {

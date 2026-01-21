@@ -2,6 +2,27 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Recent Changes (2026-01-21)
+
+### Model & Cleanup Updates
+- **Default model changed from `htdemucs_ft` to `htdemucs`**: The default separation model is now the standard 4-source model (drums, bass, other, vocals) for better stability
+- **Auto-cleanup on startup**: Files older than 24 hours in `storage/uploaded/` are automatically deleted on server startup
+- **Manual cleanup endpoint**: Added `GET /cleanup?max_age_hours=N` for manual cleanup
+- **Cache-busting**: Updated web UI version parameter to force browser cache refresh
+
+### Web UI Enhancements
+- **Song info bar persistence**: The song info bar now stays visible as long as a file exists in `storage/uploaded/`
+  - Shows after upload, during separation, and after completion
+  - Only removed when user clicks "Clear"
+  - Persists across page reloads by finding the original file in the track list
+- **Improved layout**: `song-info-details` now uses full width, filename truncation uses available space
+- **Style updates**: Better visual design with glassmorphism effects
+
+### Bug Fixes
+- Fixed 500 error caused by datetime import conflict in `api/server.py`
+- Fixed `loadTracks()` not calling `updateNowPlayingDisplay()` to show song info bar
+- Fixed `state.selectedFile` not being properly set during upload (missing `source` and `isSeparated`)
+
 ## Understanding the Codebase
 
 **IMPORTANT**: This document contains the complete architecture overview, function listings, and data flow. Before reading individual source files, **read this file first** to understand the codebase structure and how components interact. This avoids unnecessary file reads and provides efficient context.
@@ -183,35 +204,37 @@ drum-trainer/
 
 **`separator.py`** - Demucs-based drum separation
 - `DrumSeparator` class uses Facebook's Demucs v4.0.1 model
+- **Default model**: `htdemucs` (4-source separation)
 - Supports long audio chunking (default 30s) to avoid memory issues
-- **Key feature**: High-pass filter option to remove low-frequency drum bleed in "no_drums" output
-- Default device: CPU (Demucs has MPS compatibility issues, but user can force metal)
+- Default device: Apple Silicon (MPS) for speed, falls back to CPU for stability
+
+**Model Selection**:
+- **`htdemucs`** - 4-source separation (drums, bass, other, vocals) - **Default**
+- **`htdemucs_ft`** - Fine-tuned 4-source separation (better quality)
+- **`htdemucs_6s`** - 6-source separation (drums, bass, piano, guitar, other, vocals)
 
 **Track Separation Output Options**:
 
 For **4-source models** (`htdemucs`, `htdemucs_ft`):
-- **`original.wav`** - Full original track (drums + bass + other + vocals)
-- **`drum.wav`** - Isolated drum track only
-- **`no_drums.wav`** - Audio without drums (backing track: bass + other + vocals)
-- **`no_vocals.wav`** - Audio without vocals (drums + bass + other)
+- **`drums.wav`** - Isolated drum track only
 - **`bass.wav`** - Isolated bass track
+- **`other.wav`** - Other instruments (guitars, synths, horns, strings, piano, etc.)
 - **`vocals.wav`** - Isolated vocal track
-- **`other.wav`** - Other instruments (everything except drums, bass, vocals)
 
 For **6-source models** (`htdemucs_6s`):
-- **`original.wav`** - Full original track (drums + bass + piano + guitar + other + vocals)
-- **`drum.wav`** - Isolated drum track only
-- **`no_drums.wav`** - Audio without drums (backing track: bass + piano + guitar + other + vocals)
-- **`no_vocals.wav`** - Audio without vocals (drums + bass + piano + guitar + other)
+- **`drums.wav`** - Isolated drum track
 - **`bass.wav`** - Isolated bass track
+- **`piano.wav`** - Isolated piano track
+- **`guitar.wav`** - Isolated guitar track
+- **`other.wav`** - Other instruments (synths, horns, strings, etc.)
 - **`vocals.wav`** - Isolated vocal track
-- **`other.wav`** - Other instruments (guitars, synths, horns, strings, etc. - excludes drums, bass, piano, guitar, vocals)
-- **`piano.wav`** - Isolated piano track (if using 6-source model)
-- **`guitar.wav`** - Isolated guitar track (if using 6-source model)
 
 **Separation Parameters**:
-- `clean_no_drums=True` - Apply high-pass filter (default: 180Hz) to "no_drums" output to remove drum bleed
+- `clean_no_drums=True` - Apply high-pass filter (default: 180Hz) to remove low-frequency bleed
 - `cutoff_freq=180.0` - Adjustable cutoff frequency for low-frequency cleanup
+- `shifts` - Time-shifted prediction averaging (1=disabled, 2=slower but slightly better)
+
+**Note**: The `original.wav`, `no_drums.wav`, and `no_vocals.wav` tracks are no longer generated to save processing time and disk space. Use `htdemucs_6s` model for piano/guitar separation.
 
 **`music_analyzer.py`** / **`music_analyzer_v2.py`** - Music analysis
 - `MusicAnalyzer` / `MusicAnalyzerV2` classes
@@ -250,7 +273,8 @@ For **6-source models** (`htdemucs_6s`):
   - `/generation/*` - Drum generation endpoints
   - `/tracks/*` - Track management
   - `/youtube/*` - YouTube download endpoints
-- CORS enabled for all origins (development only)
+- **Cleanup**: Auto-cleanup of old files (>24 hours) on startup
+- **CORS**: Enabled for all origins (development only)
 - Web UI served from `web_ui/`
 
 **Endpoints**:
@@ -259,16 +283,18 @@ For **6-source models** (`htdemucs_6s`):
 - `POST /separation/separate` - Drum separation (upload + process)
 - `POST /separation/separate_by_name` - Process already uploaded file
 - `POST /separation/preview` - Quick 30s preview
-- `POST /separation/clear` - **NEW**: Delete entire `storage/uploaded/` directory
+- `POST /separation/clear` - Delete entire `storage/uploaded/` directory immediately
+- `GET /cleanup?max_age_hours=N` - **NEW**: Manual cleanup of old files (default: 24h)
 - `POST /analysis/analyze` - Music analysis only
-- `GET /tracks/list` - List tracks from `storage/uploaded/separated/`
-- `GET /tracks/status` - **NEW**: Check upload state
+- `GET /tracks/list` - List tracks from `storage/uploaded/` (including original files)
+- `GET /tracks/status` - Check upload state
 - `GET /tracks/audio/{filename}` - Get audio file
 - `GET /tracks/info/{filename}` - Get audio info
 - `POST /youtube/download` - Download YouTube audio to `storage/uploaded/`
 - `POST /youtube/separate` - Download + separate YouTube audio
 - `GET /health` - Service health check
 - `GET /ui` - Web UI interface
+- `GET /info` - System information (models, device, etc.)
 
 **`endpoints/`** - Route-specific logic:
 - `separation.py` - Drum separation endpoint with temp file cleanup
@@ -435,7 +461,27 @@ Edit `core/separator.py` → `_merge_results()`:
 - **Model downloads** happen automatically on first run (~1.5GB, stored in `storage/models/`)
 - **Temp files** are automatically cleaned up after processing
 - **Apple Silicon** support is primary focus (MPS acceleration)
-- **Demucs device selection**: Defaults to CPU for stability; MPS can be forced but may have issues
+- **Demucs device selection**: MPS is used by default on Apple Silicon; CPU fallback for stability
+
+## Storage & Cleanup
+
+### Upload Directory (`storage/uploaded/`)
+- **Purpose**: Stores uploaded original files and separation results
+- **Auto-cleanup**: Files older than 24 hours are deleted on server startup
+- **Manual cleanup**: Use `GET /cleanup?max_age_hours=N` endpoint
+- **Immediate cleanup**: Use `POST /separation/clear` endpoint
+- **View contents**: Use `GET /tracks/list` to see all files
+
+### Model Directory (`storage/models/`)
+- **Purpose**: Caches downloaded Demucs models
+- **Size**: ~1.5GB for full model set
+- **Location**: `storage/models/hub/checkpoints/`
+- **Cleanup**: Models persist indefinitely (not auto-deleted)
+
+### Best Practices
+1. **Development** - Let auto-cleanup handle old files (default 24h)
+2. **Production** - Set lower cleanup threshold for disk space management
+3. **Batch processing** - Use `/cleanup?max_age_hours=1` after each batch
 
 ## Troubleshooting
 
@@ -461,6 +507,17 @@ uv run drum-trainer complete song.mp3 --chunk-size 15
 ### Issue: Essentia installation fails
 - Skip it - not required for core functionality
 - Run `uv sync` without optional dependencies
+
+### Issue: Web UI shows "no tracks" but files exist
+- Files in `storage/uploaded/` may be old (>24h) and auto-cleaned
+- Check `GET /tracks/list` endpoint directly
+- Use `GET /cleanup?max_age_hours=0` to see what files exist
+
+### Issue: Server returns 500 error
+- Check server logs for Python exceptions
+- Ensure `storage/` directory has write permissions
+- Verify `TORCH_HOME` environment variable is set correctly
+- Restart server with `--reload` flag for debugging
 
 ## Test Audio
 - Use songs with clear structure (2-5 minutes recommended)

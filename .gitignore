@@ -74,3 +74,9 @@ PROJECT_SUMMARY.md
 RESEARCH_NOTES.md
 STATUS_SUMMARY.md
 START_HERE.md
+
+# Upload directory - runtime data
+storage/uploaded/*
+!storage/uploaded/.gitkeep
+storage/uploaded/separated/*
+!storage/uploaded/separated/.gitkeep

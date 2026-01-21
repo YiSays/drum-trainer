@@ -28,7 +28,14 @@ async def list_tracks():
     """
     列出 storage/uploaded/ 目录中的文件
     包括: 原始文件 (storage/uploaded/) 和分离文件 (storage/uploaded/separated/)
+
+    **分离输出 (htdemucs 模型)**:
+    - drums.wav - 鼓声
+    - bass.wav - 贝斯
+    - other.wav - 其他乐器
+    - vocals.wav - 人声
     """
+    from fastapi.responses import JSONResponse
     audio_io = AudioIO()
     supported_extensions = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".webm"}
 
@@ -80,7 +87,13 @@ async def list_tracks():
 
     files.sort(key=lambda x: x["name"])
 
-    return files
+    return JSONResponse(
+        content=files,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        }
+    )
 
 
 @router.get("/status", summary="检查上传状态")

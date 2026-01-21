@@ -153,7 +153,9 @@ async def generate_drums(
 async def process_complete(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    chunk_duration: float = Form(30.0, description="分离处理时长（秒）")
+    chunk_duration: float = Form(30.0, description="分离处理时长（秒）"),
+    model: str = Form("htdemucs", description="分离模型: htdemucs (4声道) 或 htdemucs_ft (微调4声道) 或 htdemucs_6s (6声道)"),
+    shifts: int = Form(1, description="时间偏移增强次数")
 ):
     """
     完整处理流程（一站式API）
@@ -162,6 +164,14 @@ async def process_complete(
     - 鼓声分离 (Demucs)
     - 音乐理解 (A+B)
     - 智能生成 (纯自动)
+
+    **模型选择**:
+    - `htdemucs`: 4声道分离 (drums, bass, other, vocals) - **推荐**
+    - `htdemucs_ft`: 微调版4声道分离 (drums, bass, other, vocals)
+    - `htdemucs_6s`: 6声道分离 (drums, bass, piano, guitar, other, vocals)
+
+    **质量增强**:
+    - `shifts`: 时间偏移增强次数
 
     **返回**: 所有处理结果 + 文件
     """
@@ -184,8 +194,8 @@ async def process_complete(
         # 1. 分离
         print("🔪 步骤 1: 分离鼓声...")
         from core.separator import DrumSeparator
-        separator = DrumSeparator()
-        separated_files = separator.separate(temp_audio, output_subdir / "separated", chunk_duration)
+        separator = DrumSeparator(model_name=model)
+        separated_files = separator.separate(temp_audio, output_subdir / "separated", chunk_duration, shifts=shifts)
 
         # 2. 分析
         print("📊 步骤 2: 音乐分析...")

@@ -266,7 +266,7 @@ uvicorn api.server:app --host 0.0.0.0 --port 8000
 
 ### Phase 9: PLANNED ⏳
 - Polish & Testing
-- Advanced features (multi-track mixing, metronome)
+- Advanced features (multi-track mixing)
 - Theme switching
 - Cross-browser testing
 - Performance optimization
@@ -344,11 +344,10 @@ flutter build web --release
 4. Set API base URL for production
 
 ### For Features
-1. Implement metronome/count-in
-2. Add loop functionality
-3. Theme switching (dark/light)
-4. Advanced mixing controls
-5. MIDI export support
+1. Add loop functionality
+2. Theme switching (dark/light)
+3. Advanced mixing controls
+4. MIDI export support
 
 ## 📝 Notes
 
