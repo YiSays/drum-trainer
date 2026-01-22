@@ -32,7 +32,10 @@
             <!-- Left Panel - Track Browser -->
             <aside class="sidebar">
                 <div class="sidebar-header">
-                    <h2 class="sidebar-title">🎵 音轨库</h2>
+                    <h2 class="sidebar-title">
+                        <span id="sidebarTitleText">🎵 音轨库</span>
+                        <span id="sidebarTitleCount" class="title-count hidden"></span>
+                    </h2>
                     <div class="sidebar-actions">
                         <button id="refreshBtn" class="btn-glow" title="刷新音轨列表 (R)">
                             <span>⟳</span>
@@ -52,9 +55,9 @@
                         <div class="drop-icon">📁</div>
                         <h3>拖放音频文件到这里</h3>
                         <p class="drop-subtitle">或点击选择文件</p>
-                        <input type="file" id="fileInput" accept="audio/*" class="file-input-hidden" aria-label="Select audio file">
+                        <input type="file" id="fileInput" accept="audio/mp3,audio/wav,audio/flac,audio/ogg,audio/m4a,audio/webm,audio/*" class="file-input-hidden" aria-label="Select audio file">
                         <button id="selectFileBtn" class="btn-primary" aria-label="Choose file">选择文件</button>
-                        <div class="upload-hint">支持: MP3, WAV, FLAC, OGG (最大 100MB)</div>
+                        <div class="upload-hint">支持: MP3, WAV, FLAC, OGG, M4A (最大 100MB)</div>
 
                         <div id="uploadProgress" class="upload-progress hidden">
                             <div class="progress-header">
@@ -101,6 +104,19 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Guide Card (shown when separated tracks exist) -->
+                <div id="guideCard" class="guide-card hidden">
+                    <div class="guide-header">
+                        <span class="guide-icon">💡</span>
+                        <strong>使用指南</strong>
+                    </div>
+                    <div class="guide-content">
+                        <p>• <strong>选择音轨</strong> → 点击音轨卡片选中/取消</p>
+                        <p>• <strong>播放选中音轨</strong> → 播放按钮播放混合音轨</p>
+                        <p>• <strong>播放完整歌曲</strong> → 不选音轨，直接播放</p>
                     </div>
                 </div>
 
@@ -153,69 +169,58 @@
 
                 <!-- Playback Controls -->
                 <div class="card controls-card">
-                    <div class="card-header">
-                        <h3>🎛️ 播放控制</h3>
-                    </div>
-                    <div class="card-body">
-                        <!-- Main Controls -->
-                        <div class="control-section">
-                            <div class="main-controls" role="group" aria-label="Playback controls">
-                                <button id="stopBtn" class="btn-control stop" disabled aria-label="Stop playback" title="停止 (ESC)">
+                    <div class="card-body controls-layout">
+                        <!-- Top: Seek Bar & Time -->
+                        <div class="seek-section">
+                            <span id="currentTime" class="time-text">0:00</span>
+                            <div class="seek-bar-container">
+                                <input type="range" id="seekBar" class="seek-slider" value="0" min="0" max="100" disabled aria-label="Seek position" title="拖动跳转">
+                            </div>
+                            <span id="totalTime" class="time-text">0:00</span>
+                        </div>
+
+                        <!-- Bottom: Main Controls & Settings -->
+                        <div class="controls-row">
+                            <!-- Left: Volume -->
+                            <div class="control-group volume-control">
+                                <div class="icon-label" title="音量">🔊</div>
+                                <input type="range" id="volumeSlider" class="compact-slider" value="80" min="0" max="100" aria-label="Master volume" title="音量">
+                                <span id="volumeValue" class="value-text">80%</span>
+                            </div>
+
+                            <!-- Center: Playback Actions -->
+                            <div class="playback-actions">
+                                <!-- Loop Toggle -->
+                                <div class="loop-wrapper">
+                                    <input type="checkbox" id="loopCheckbox" class="hidden-checkbox">
+                                    <label for="loopCheckbox" class="btn-icon-toggle" title="循环播放 (L)">
+                                        <span class="icon">🔁</span>
+                                    </label>
+                                </div>
+
+                                <!-- Stop -->
+                                <button id="stopBtn" class="btn-icon-round secondary" disabled aria-label="Stop playback" title="停止 (ESC)">
                                     <span class="icon">⏹</span>
                                 </button>
-                                <button id="playBtn" class="btn-control play" disabled aria-label="Play" title="播放 (空格)">
-                                    <span class="icon">▶</span>
-                                </button>
-                                <button id="pauseBtn" class="btn-control pause" disabled aria-label="Pause" title="暂停">
-                                    <span class="icon">⏸</span>
+
+                                <!-- Play/Pause -->
+                                <button id="playPauseBtn" class="btn-icon-round primary big" disabled aria-label="Play/Pause toggle" title="播放/暂停 (空格)">
+                                    <span class="icon" id="playPauseIcon">▶</span>
                                 </button>
                             </div>
 
-                            <!-- Seek Bar -->
-                            <div class="seek-container">
-                                <input type="range" id="seekBar" class="seek-slider" value="0" min="0" max="100" disabled aria-label="Seek position" title="拖动跳转">
-                                <div class="time-display">
-                                    <span id="currentTime">0:00</span>
-                                    <span class="time-separator">/</span>
-                                    <span id="totalTime">0:00</span>
-                                </div>
-                            </div>
-
-                            <!-- Selected Tracks Info -->
-                            <div id="selectedTracksInfo" class="selected-tracks-info hidden">
-                                <span class="info-label">🎵 播放列表:</span>
-                                <span id="selectedTracksList" class="info-tracks"></span>
+                            <!-- Right: Speed -->
+                            <div class="control-group speed-control">
+                                <div class="icon-label" title="速度">⚡</div>
+                                <input type="range" id="speedSlider" class="compact-slider" value="100" min="50" max="200" step="10" aria-label="Playback speed" title="速度">
+                                <span id="speedValue" class="value-text">1.0x</span>
                             </div>
                         </div>
 
-                        <!-- Secondary Controls -->
-                        <div class="secondary-controls" role="group" aria-label="Audio settings">
-                            <!-- Volume -->
-                            <div class="control-group">
-                                <label class="control-label" for="volumeSlider">
-                                    🔊 音量
-                                    <span id="volumeValue" class="control-value">80%</span>
-                                </label>
-                                <input type="range" id="volumeSlider" class="range-slider" value="80" min="0" max="100" aria-label="Master volume" title="主音量">
-                            </div>
-
-                            <!-- Speed -->
-                            <div class="control-group">
-                                <label class="control-label" for="speedSlider">
-                                    ⚡ 速度
-                                    <span id="speedValue" class="control-value">1.0x</span>
-                                </label>
-                                <input type="range" id="speedSlider" class="range-slider" value="100" min="50" max="200" step="10" aria-label="Playback speed" title="播放速度">
-                            </div>
-
-                            <!-- Loop Toggle -->
-                            <div class="control-group checkbox-group">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="loopCheckbox" aria-label="Loop playback">
-                                    <span class="checkmark"></span>
-                                    <span class="label-text">🔁 循环播放</span>
-                                </label>
-                            </div>
+                        <!-- Selected Tracks Info -->
+                        <div id="selectedTracksInfo" class="selected-tracks-info hidden">
+                            <span class="info-label">🎵 播放列表:</span>
+                            <span id="selectedTracksList" class="info-tracks"></span>
                         </div>
                     </div>
                 </div>
@@ -287,6 +292,6 @@
     <audio id="mixDrumPlayer" preload="auto"></audio>
     <audio id="mixBackingPlayer" preload="auto"></audio>
 
-    <script src="/ui/js/app.js?v=2025012101"></script>
+    <script src="/ui/js/app.js?v=2026012202"></script>
 </body>
 </html>

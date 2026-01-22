@@ -151,17 +151,24 @@ uv run drum-trainer complete your_song.mp3 -o output/
 ### 📤 上传音频
 
 1. **拖放音频文件**到上传区域或点击"选择文件"
-2. 支持格式：MP3, WAV, FLAC, OGG, M4A, WEBM
+2. 支持格式：MP3, WAV, FLAC, OGG, M4A
 3. 文件**自动上传**到 `storage/uploaded/` 目录
 4. 预览信息显示文件大小、时长、格式
+
+**音频格式说明**:
+- **输入格式**: MP3, WAV, FLAC, OGG, M4A - 全部通过 `librosa` 自动处理
+- **分离输出**: WAV 格式（无损）- Demucs 原生输出
+- **YouTube 下载**: M4A (AAC) 格式，192kbps，最佳兼容性
 
 ### 🎧 YouTube 下载
 
 1. 在 YouTube 下载区域粘贴视频链接
 2. 可选：指定输出文件名
 3. 点击"下载音频"开始下载
-4. 文件保存到 `storage/uploaded/` 目录
+4. 文件保存到 `storage/uploaded/` 目录，格式为 **M4A (AAC)**
 5. **自动显示在音轨列表中**
+
+**音频格式**: YouTube 下载使用 M4A (AAC) 格式，192kbps，具有最佳浏览器兼容性（支持 Safari/iOS）和 Demucs 处理兼容性。
 
 ### 🎵 音轨管理
 

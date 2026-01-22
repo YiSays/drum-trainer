@@ -7,6 +7,11 @@
  * Version: 1.2.0 - Consolidated processCard into now-playing-card for unified UX
  * Version: 1.2.1 - Fixed "Separate" button disappearing during preview playback
  * Version: 1.2.2 - Keep original file for playback during separation (copy instead of move)
+ * Version: 2.0.0 - Unified file state management: uploadedFile state replaces selectedFile
+ *                 - Added clear-before-upload logic (one file at a time)
+ *                 - Created processUploadedFile() unified function (replaces processSelectedFile + separateYouTubeFile)
+ *                 - Added file existence validation before processing
+ *                 - Added processing state tracking (processing, processingType)
  */
 
 // Detect API base URL dynamically
@@ -44,6 +49,8 @@ const elements = {
 
     // Track List
     trackList: document.getElementById('trackList'),
+    guideCard: document.getElementById('guideCard'),
+    sidebarTitleCount: document.getElementById('sidebarTitleCount'),
 
     // Screen Reader Announcements
     srAnnounce: document.getElementById('srAnnounce'),
@@ -77,8 +84,8 @@ const elements = {
     youtubeProgressPercent: document.getElementById('youtubeProgressPercent'),
 
     // Player Controls
-    playBtn: document.getElementById('playBtn'),
-    pauseBtn: document.getElementById('pauseBtn'),
+    playPauseBtn: document.getElementById('playPauseBtn'),
+    playPauseIcon: document.getElementById('playPauseIcon'),
     stopBtn: document.getElementById('stopBtn'),
     seekBar: document.getElementById('seekBar'),
     currentTime: document.getElementById('currentTime'),
@@ -126,13 +133,29 @@ let state = {
     isLooping: false,
     apiConnected: false,
     uploadVisible: false,
-    selectedFile: null,
+    selectedFile: null,  // DEPRECATED: Use uploadedFile instead
     audioContext: null,
     analyser: null,
     trackVolumes: {},  // NEW: Map track name -> volume (0-100)
     pendingSeekPosition: null,  // NEW: Store seek position before playback starts (0-100 percentage)
     storedSeekTime: null,  // NEW: Store actual seek time in seconds for syncing later audio elements
     isUploading: false,  // NEW: Track upload state to prevent mid-upload panel closure
+    originalFilePosition: 0,  // NEW: Track position of original file independently of audio element
+
+    // NEW: Unified uploaded file state (replaces selectedFile for file tracking)
+    uploadedFile: {
+        name: null,           // File name (e.g., "song.mp3")
+        path: null,           // Relative path (e.g., "storage/uploaded/song.mp3")
+        size: null,           // File size in bytes
+        duration: null,       // Duration in seconds
+        source: null,         // Origin of the file: 'upload' | 'youtube'
+        timestamp: null,      // When file was uploaded/downloaded (ms since epoch)
+        isSeparated: false,   // Whether separation has been run
+    },
+
+    // NEW: Processing state
+    processing: false,           // Currently processing (upload/download/separation)
+    processingType: null,        // Type: 'upload' | 'download' | 'separation'
 };
 
 // Canvas Context
@@ -304,12 +327,9 @@ function setupEventListeners() {
         });
     }
 
-    // Player controls
-    if (elements.playBtn) {
-        elements.playBtn.addEventListener('click', play);
-    }
-    if (elements.pauseBtn) {
-        elements.pauseBtn.addEventListener('click', pause);
+    // Player controls - Unified Play/Pause Toggle
+    if (elements.playPauseBtn) {
+        elements.playPauseBtn.addEventListener('click', togglePlayPause);
     }
     if (elements.stopBtn) {
         elements.stopBtn.addEventListener('click', stop);
@@ -374,9 +394,12 @@ function setupEventListeners() {
             startRealtimeVisualization();
         });
         elements.audioPlayer.addEventListener('pause', () => {
-            state.isPlaying = false;
-            updatePlayState();
-            stopRealtimeVisualization();
+            // Bug Fix #5: Only update state if it's currently playing (prevents race condition)
+            if (state.isPlaying) {
+                state.isPlaying = false;
+                updatePlayState();
+                stopRealtimeVisualization();
+            }
         });
         elements.audioPlayer.addEventListener('error', (e) => {
             console.error('Audio error:', e);
@@ -396,11 +419,8 @@ function setupKeyboardShortcuts() {
         switch (e.code) {
             case 'Space':
                 e.preventDefault();
-                if (state.isPlaying) {
-                    pause();
-                } else if (state.selectedTracks.length > 0) {
-                    play();
-                }
+                // Use unified toggle logic for space bar
+                togglePlayPause();
                 break;
             case 'Escape':
                 stop();
@@ -574,6 +594,7 @@ async function loadTracks(options = {}) {
                     <div class="empty-icon">🎵</div>
                     <h3>暂无音轨</h3>
                     <p>点击右上角 + 按钮上传音频文件</p>
+                    <p class="guide-subtext">💡 上传后可直接播放，或点击"处理"分离鼓声</p>
                 </div>
             `;
             // Show upload panel if no tracks exist
@@ -586,6 +607,11 @@ async function loadTracks(options = {}) {
                 state.uploadVisible = true;
                 state.uploadLocked = false;
             }
+            // Hide guide card and reset title count
+            if (elements.guideCard) {
+                elements.guideCard.classList.add('hidden');
+            }
+            updateSidebarTitleCount(0);
             return;
         }
 
@@ -630,6 +656,10 @@ async function loadTracks(options = {}) {
         // Update now-playing display to show song info bar if we have an original file
         if (state.selectedFile) {
             updateNowPlayingDisplay();
+            // Also update the total time display with the original file's duration
+            if (elements.totalTime && state.selectedFile.duration) {
+                elements.totalTime.textContent = formatTime(state.selectedFile.duration);
+            }
         }
 
     } catch (error) {
@@ -654,11 +684,57 @@ async function loadTracks(options = {}) {
 
 /**
  * Render Track List with click-to-select
+ * Only shows separated tracks (original file is not displayed in the track list)
  */
 function renderTrackList(tracks) {
+    // Filter to show ONLY separated tracks in the track list
+    // Original file is available for playback but not shown in the track list
+    const separatedTracks = tracks.filter(track => track.is_separated);
+    const hasSeparatedTracks = separatedTracks.length > 0;
+
+    // Update sidebar title count
+    updateSidebarTitleCount(hasSeparatedTracks ? separatedTracks.length : 0);
+
+    // Show/hide guide card based on whether we have separated tracks
+    if (elements.guideCard) {
+        if (hasSeparatedTracks) {
+            elements.guideCard.classList.remove('hidden');
+        } else {
+            elements.guideCard.classList.add('hidden');
+        }
+    }
+
+    // If no separated tracks, show a special message explaining the workflow
+    if (!hasSeparatedTracks) {
+        // Find the original file to show context
+        const originalFile = tracks.find(track => !track.is_separated);
+        if (originalFile) {
+            elements.trackList.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">🎵</div>
+                    <h3>原始文件已就绪</h3>
+                    <p class="filename">${originalFile.name}</p>
+                    <p class="guide-subtext">💡 <strong>播放完整歌曲</strong> - 点击播放按钮直接播放</p>
+                    <p class="guide-subtext">💡 <strong>分离音轨</strong> - 使用上方"文件预览"中的"开始分离"按钮</p>
+                </div>
+            `;
+        } else {
+            // Shouldn't happen, but fallback
+            elements.trackList.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">🎵</div>
+                    <h3>等待处理</h3>
+                    <p>上传的文件准备就绪</p>
+                </div>
+            `;
+        }
+        return;
+    }
+
+    // Render separated tracks
     elements.trackList.innerHTML = '';
 
-    tracks.forEach((track, index) => {
+    separatedTracks.forEach((track, index) => {
         const trackCard = document.createElement('div');
 
         // Get track type info for styling
@@ -716,6 +792,23 @@ function renderTrackList(tracks) {
 
         elements.trackList.appendChild(trackCard);
     });
+}
+
+/**
+ * Update sidebar title count indicator
+ * Shows track count when separated tracks exist
+ */
+function updateSidebarTitleCount(count) {
+    if (!elements.sidebarTitleCount) return;
+
+    if (count > 0) {
+        elements.sidebarTitleCount.textContent = `${count} 分离`;
+        elements.sidebarTitleCount.classList.remove('hidden');
+        elements.sidebarTitleCount.classList.add('visible');
+    } else {
+        elements.sidebarTitleCount.classList.add('hidden');
+        elements.sidebarTitleCount.classList.remove('visible');
+    }
 }
 
 /**
@@ -814,11 +907,35 @@ function addToSelectedTracks(track, index) {
 
     // If currently playing, start this track immediately (non-stop, synced)
     if (state.isPlaying) {
-        // Get the current position before playing to ensure tight sync
-        const currentPosition = getCurrentPlaybackPosition();
-        console.log(`Adding track ${track.name} during playback, syncing to position: ${currentPosition}s`);
+        // Check if the original file is currently playing
+        // If so, we need to stop it first before starting the separated track
+        // This prevents the original (full mix) and separated track from playing simultaneously
+        const originalIsPlaying = window.originalAudioPlayer && !window.originalAudioPlayer.paused;
 
-        playTrackImmediately(track, true); // true = sync to current position
+        // Determine the target position before stopping anything
+        let targetPosition = null;
+        if (originalIsPlaying) {
+            targetPosition = window.originalAudioPlayer.currentTime;
+            console.log('Original file is playing at position:', targetPosition);
+            console.log('Stopping original, will start separated track from same position');
+
+            // Stop the original BEFORE playing the new track
+            window.originalAudioPlayer.pause();
+            window.originalAudioPlayer.currentTime = 0;
+        }
+
+        // Get current position from existing separated tracks (or use saved position from original)
+        if (targetPosition === null) {
+            targetPosition = getCurrentPlaybackPosition();
+        }
+
+        console.log(`Adding track ${track.name} during playback, syncing to position: ${targetPosition}s`);
+
+        // Play the track with the determined position
+        playTrackImmediately(track, targetPosition);
+
+        // Clear stored seek time since we've used it
+        state.storedSeekTime = null;
 
         // Additional sync after a short delay to ensure all tracks are synced
         setTimeout(() => {
@@ -846,9 +963,16 @@ function removeFromSelectedTracks(index) {
     const card = document.querySelector(`[data-index="${index}"]`);
     if (card) card.classList.remove('active');
 
-    // Update total time display (or clear if no tracks left)
+    // Update total time display (or show original file duration if no tracks left)
     if (state.selectedTracks.length === 0) {
-        if (elements.totalTime) elements.totalTime.textContent = '0:00';
+        // Show original file duration if available
+        if (state.selectedFile && state.selectedFile.duration) {
+            if (elements.totalTime) elements.totalTime.textContent = formatTime(state.selectedFile.duration);
+        } else if (window.originalAudioPlayer && window.originalAudioPlayer.duration) {
+            if (elements.totalTime) elements.totalTime.textContent = formatTime(window.originalAudioPlayer.duration);
+        } else {
+            if (elements.totalTime) elements.totalTime.textContent = '0:00';
+        }
     } else {
         updateTotalTimeForSelectedTracks();
     }
@@ -856,13 +980,21 @@ function removeFromSelectedTracks(index) {
     // Update now-playing display
     updateNowPlayingDisplay();
 
-    // If currently playing, stop just this audio element (keep others)
-    if (state.isPlaying) {
-        const audioElement = document.querySelector(`audio[data-track="${trackToRemove.track.name}"]`);
-        if (audioElement) {
-            audioElement.pause();
-            audioElement.remove();
+    // If currently playing OR paused, remove this audio element to keep state consistent
+    // This ensures that when user clicks Play after deselecting a track while paused,
+    // the remaining audio elements match the current selection
+    const audioElement = document.querySelector(`audio[data-track="${trackToRemove.track.name}"]`);
+    if (audioElement) {
+        // Before removing, save the current position if we're paused and this is the only/last track being removed
+        // This allows position to be preserved when switching tracks
+        if (audioElement.paused && audioElement.currentTime > 0) {
+            const hadNonZeroTime = audioElement.currentTime;
+            console.log(`Saving position ${hadNonZeroTime}s from deselected track ${trackToRemove.track.name}`);
+            state.storedSeekTime = hadNonZeroTime;
         }
+
+        audioElement.pause();
+        audioElement.remove();
     }
 
     showToast(`已移除: ${trackToRemove.track.name}`, 'info');
@@ -871,6 +1003,7 @@ function removeFromSelectedTracks(index) {
 /**
  * Clear all selected tracks and delete uploaded files
  * Deletes storage/uploaded/ directory and resets UI
+ * Uses uploadedFile as the source of truth for file management
  */
 async function clearSelection() {
     console.log('=== clearSelection() called ===');
@@ -911,6 +1044,15 @@ async function clearSelection() {
     // Reset state
     state.uploadLocked = false;
     state.selectedFile = null;
+    state.uploadedFile = { name: null, path: null, size: null, duration: null, source: null, timestamp: null, isSeparated: false };
+
+    // Clear processing state
+    state.processing = false;
+    state.processingType = null;
+
+    // Clear seek-related state
+    state.pendingSeekPosition = null;
+    state.storedSeekTime = null;
 
     // Clear trackList UI - show empty state
     if (elements.trackList) {
@@ -934,6 +1076,12 @@ async function clearSelection() {
             });
         }
     }
+
+    // Hide guide card and reset title count
+    if (elements.guideCard) {
+        elements.guideCard.classList.add('hidden');
+    }
+    updateSidebarTitleCount(0);
 
     // Reset UI elements
     if (elements.totalTime) elements.totalTime.textContent = '0:00';
@@ -1036,6 +1184,12 @@ function updateSelectedTracksInfo() {
         }).join('');
 
         elements.selectedTracksList.innerHTML = badges;
+
+        // Update the label to indicate these are selected tracks being played
+        const label = elements.selectedTracksInfo.querySelector('.info-label');
+        if (label) {
+            label.textContent = '🎵 播放列表:';
+        }
     } else {
         elements.selectedTracksInfo.classList.add('hidden');
     }
@@ -1079,7 +1233,7 @@ function getCurrentPlaybackPosition() {
  * Play a single track immediately without stopping other tracks
  * Used for non-stop playback when adding tracks during playback
  * @param {object} track - The track object to play
- * @param {boolean} syncPosition - If true, sync to current playback position
+ * @param {boolean|number} syncPosition - If true, sync to current playback position. If a number, use that position.
  */
 function playTrackImmediately(track, syncPosition = false) {
     console.log('=== playTrackImmediately() called ===');
@@ -1121,7 +1275,8 @@ function playTrackImmediately(track, syncPosition = false) {
                     break;
                 }
             }
-            if (allPaused) {
+            // Bug Fix #5: Only update state if it's currently playing (prevents race condition)
+            if (allPaused && state.isPlaying) {
                 state.isPlaying = false;
                 updatePlayState();
                 stopRealtimeVisualization();
@@ -1143,11 +1298,19 @@ function playTrackImmediately(track, syncPosition = false) {
     audioElement.volume = volume / 100;
     console.log('Set volume to:', volume);
 
-    // If syncing position, find current playback position from other audio elements
+    // Determine target time for sync
     let targetTime = 0;
-    if (syncPosition) {
+    if (syncPosition === true) {
+        // Boolean true: find current playback position from other audio elements
         targetTime = getCurrentPlaybackPosition();
-        console.log('Syncing to position:', targetTime);
+        console.log('Syncing to current position:', targetTime);
+    } else if (typeof syncPosition === 'number') {
+        // Number: use the provided position directly
+        targetTime = syncPosition;
+        console.log('Syncing to provided position:', targetTime);
+    }
+
+    if (targetTime > 0) {
         audioElement.currentTime = targetTime;
     }
 
@@ -1197,6 +1360,10 @@ function stopAllAudio() {
         window.originalAudioPlayer.pause();
         window.originalAudioPlayer.currentTime = 0;
     }
+
+    // Clear seek state when stopping all audio
+    state.storedSeekTime = null;
+    state.originalFilePosition = 0;  // Bug Fix #3: Clear original file position when stopping
 }
 
 /**
@@ -1205,13 +1372,19 @@ function stopAllAudio() {
 function pauseAllAudio() {
     const allAudio = document.querySelectorAll('audio[data-track]');
     allAudio.forEach(audio => audio.pause());
+
+    // Bug Fix #2: Also pause original audio player if it exists
+    // The original audio player has dataset.track = 'original'
+    if (window.originalAudioPlayer && !window.originalAudioPlayer.paused) {
+        window.originalAudioPlayer.pause();
+    }
 }
 
 /**
  * Enable/Disable Player Controls
  */
 function enablePlayerControls(enabled) {
-    const controls = [elements.playBtn, elements.pauseBtn, elements.stopBtn, elements.seekBar];
+    const controls = [elements.playPauseBtn, elements.stopBtn, elements.seekBar];
     controls.forEach(control => {
         if (control) control.disabled = !enabled;
     });
@@ -1294,36 +1467,65 @@ function play() {
     console.log('Is already playing:', state.isPlaying);
     console.log('Pending seek position:', state.pendingSeekPosition);
 
-    // Check if we're playing an original (non-separated) file
-    if (state.selectedFile && !state.selectedFile.isSeparated) {
-        // Check if we should resume original audio instead of starting fresh
-        if (!state.isPlaying && window.originalAudioPlayer && window.originalAudioPlayer.src) {
-            console.log('Resuming original file playback');
-            window.originalAudioPlayer.play();
-            return;
-        }
-        console.log('Playing original file for quality check');
-        playOriginalFile();
-        return;
-    }
-
     // Check if we should resume instead of starting fresh
     // If there are existing audio elements and we're not currently playing, resume
     const existingAudio = document.querySelectorAll('audio[data-track]');
     if (!state.isPlaying && existingAudio.length > 0) {
-        console.log('Found existing audio elements, using resume() instead');
-        resume();
-        return;
+        // Check if the existing audio elements match the current selection
+        const existingTrackNames = Array.from(existingAudio).map(a => a.dataset.track);
+        const selectedTrackNames = state.selectedTracks.map(t => t.track.name);
+
+        // Sort both arrays for comparison
+        const existingSorted = [...existingTrackNames].sort();
+        const selectedSorted = [...selectedTrackNames].sort();
+
+        const matches = existingSorted.length === selectedSorted.length &&
+                        existingSorted.every((name, i) => name === selectedSorted[i]);
+
+        if (matches) {
+            console.log('Found matching existing audio elements, using resume()');
+            resume();
+            return;
+        } else {
+            console.log('Existing audio elements don\'t match selection, stopping and recreating');
+            console.log('  Existing:', existingSorted);
+            console.log('  Selected:', selectedSorted);
+            stopAllAudio();
+            // Continue to create new audio elements
+        }
     }
 
-    if (state.selectedTracks.length === 0) {
+    // Check if we have selected separated tracks to play
+    if (state.selectedTracks.length > 0) {
+        console.log('Playing separated tracks');
+        // Continue to the rest of the play function
+    }
+    // Check if we have an original file to play (when no tracks are selected)
+    // This works whether separation has been done or not
+    else if (state.selectedFile) {
+        console.log('Playing original file (no tracks selected)');
+        playOriginalFile();
+        return;
+    }
+    // No tracks and no original file
+    else {
         showToast('请先选择音轨', 'warning');
         return;
     }
 
+    // Check if we need to establish API connection
     if (!state.apiConnected) {
         showToast('API 未连接', 'error');
         return;
+    }
+
+    // Stop and reset the original audio player if it exists
+    // This prevents it from interfering with separated track playback
+    if (window.originalAudioPlayer) {
+        console.log('Pausing and resetting original audio player');
+        window.originalAudioPlayer.pause();
+        window.originalAudioPlayer.currentTime = 0;
+        window.originalAudioPlayer.src = '';
     }
 
     // Track how many audio elements are ready
@@ -1336,9 +1538,11 @@ function play() {
     const applySeekIfNeeded = () => {
         console.log('=== applySeekIfNeeded() called ===');
         console.log('Pending seek position:', state.pendingSeekPosition);
+        console.log('Stored seek time:', state.storedSeekTime);
         console.log('Audio elements count:', audioElements.length);
 
-        if (state.pendingSeekPosition !== null && audioElements.length > 0) {
+        // Check if we need to apply stored seek time (from track switch or pending seek)
+        if ((state.pendingSeekPosition !== null || state.storedSeekTime !== null) && audioElements.length > 0) {
             // Debug: log all audio element states
             audioElements.forEach((audio, i) => {
                 console.log(`  Audio ${i} (${audio.dataset.track}): duration=${audio.duration}, isNaN=${isNaN(audio.duration)}`);
@@ -1349,35 +1553,46 @@ function play() {
             console.log('Reference audio:', referenceAudio ? referenceAudio.dataset.track : 'null');
 
             if (referenceAudio) {
-                const seekTime = (state.pendingSeekPosition / 100) * referenceAudio.duration;
-                console.log('Applying pending seek:', state.pendingSeekPosition, '% ->', seekTime, 's');
+                let seekTime = state.storedSeekTime;
 
-                // Store seekTime for future audio elements that haven't loaded yet
-                // This is crucial for multi-track sync
-                state.storedSeekTime = seekTime;
-                console.log('Stored seekTime for future elements:', seekTime);
+                // If we have a pending seek position (from seek bar), calculate seek time from percentage
+                if (state.pendingSeekPosition !== null) {
+                    seekTime = (state.pendingSeekPosition / 100) * referenceAudio.duration;
+                    console.log('Calculated seek time from pending position:', state.pendingSeekPosition, '% ->', seekTime, 's');
+                }
 
-                audioElements.forEach(audio => {
-                    if (audio.duration && !isNaN(audio.duration)) {
-                        console.log(`  Setting ${audio.dataset.track} currentTime to ${seekTime}`);
-                        audio.currentTime = seekTime;
+                if (seekTime !== null && seekTime !== undefined) {
+                    console.log('Applying seek time:', seekTime, 's');
+
+                    // Store seekTime for future audio elements that haven't loaded yet
+                    // This is crucial for multi-track sync
+                    state.storedSeekTime = seekTime;
+                    console.log('Stored seekTime for future elements:', seekTime);
+
+                    audioElements.forEach(audio => {
+                        if (audio.duration && !isNaN(audio.duration)) {
+                            console.log(`  Setting ${audio.dataset.track} currentTime to ${seekTime}`);
+                            audio.currentTime = seekTime;
+                        }
+                    });
+                    // Only clear pending position AFTER all elements have been seeked
+                    // Check if all audio elements now have valid durations (meaning all have been processed)
+                    const allHaveDurations = audioElements.every(a => a.duration && !isNaN(a.duration));
+                    if (allHaveDurations) {
+                        state.pendingSeekPosition = null;
+                        state.storedSeekTime = null;
+                        console.log('Pending seek position and stored seek time cleared (all elements processed)');
+                    } else {
+                        console.log('Seek position NOT cleared yet (some elements still loading)');
                     }
-                });
-                // Only clear pending position AFTER all elements have been seeked
-                // Check if all audio elements now have valid durations (meaning all have been processed)
-                const allHaveDurations = audioElements.every(a => a.duration && !isNaN(a.duration));
-                if (allHaveDurations) {
-                    state.pendingSeekPosition = null;
-                    state.storedSeekTime = null;
-                    console.log('Pending seek position cleared (all elements processed)');
                 } else {
-                    console.log('Pending seek position NOT cleared yet (some elements still loading)');
+                    console.log('No valid seek time to apply');
                 }
             } else {
                 console.log('No reference audio found yet - cannot apply seek');
             }
         } else {
-            console.log('Not applying seek: pendingSeekPosition=', state.pendingSeekPosition, 'audioElements.length=', audioElements.length);
+            console.log('Not applying seek: pendingSeekPosition=', state.pendingSeekPosition, 'storedSeekTime=', state.storedSeekTime, 'audioElements.length=', audioElements.length);
         }
     };
 
@@ -1436,7 +1651,8 @@ function play() {
                     break;
                 }
             }
-            if (allPaused) {
+            // Bug Fix #5: Only update state if it's currently playing (prevents race condition)
+            if (allPaused && state.isPlaying) {
                 state.isPlaying = false;
                 updatePlayState();
                 stopRealtimeVisualization();
@@ -1474,9 +1690,14 @@ function play() {
         const audioUrl = `${API_BASE_URL}/tracks/audio/${selected.track.name}`;
         console.log('  Setting src:', audioUrl);
 
-        // Clear current time BEFORE setting src (important for fresh load)
-        // BUT if we have a pending seek position, we'll apply it later after metadata loads
-        audioElement.currentTime = 0;
+        // Set currentTime to stored seek time if available, otherwise 0
+        // This ensures position is preserved when switching tracks
+        if (state.storedSeekTime !== null && state.storedSeekTime !== undefined) {
+            console.log(`  Pre-setting currentTime to stored seek time: ${state.storedSeekTime}s`);
+            audioElement.currentTime = state.storedSeekTime;
+        } else {
+            audioElement.currentTime = 0;
+        }
         audioElement.src = audioUrl;
 
         audioElement.volume = (state.trackVolumes[selected.track.name] ?? 50) / 100;
@@ -1546,6 +1767,13 @@ function playOriginalFile() {
     const filename = state.selectedFile.name;
     const audioUrl = `${API_BASE_URL}/tracks/audio/original/${encodeURIComponent(filename)}`;
 
+    // Bug Fix #3: Save current position before any changes
+    // This preserves position when resuming from pause
+    if (window.originalAudioPlayer && window.originalAudioPlayer.currentTime && !isNaN(window.originalAudioPlayer.currentTime)) {
+        state.originalFilePosition = window.originalAudioPlayer.currentTime;
+        console.log('Saved position from existing original audio player:', state.originalFilePosition);
+    }
+
     // Use existing audio element or create new one
     if (!window.originalAudioPlayer) {
         window.originalAudioPlayer = new Audio();
@@ -1582,7 +1810,16 @@ function playOriginalFile() {
 
     window.originalAudioPlayer.onerror = (err) => {
         console.error('Play error:', err);
-        showToast('播放失败: ' + err.message, 'error');
+        const errorMsg = err.message || '未知错误';
+        console.error('Error details:', {
+            type: err.type,
+            message: errorMsg,
+            code: err.code,
+            target: err.target?.src,
+            readyState: err.target?.readyState,
+            networkState: err.target?.networkState
+        });
+        showToast('播放失败: ' + errorMsg, 'error');
     };
 
     // Note: We intentionally do NOT update the now-playing-card UI
@@ -1614,6 +1851,8 @@ function handleOriginalTimeUpdate() {
         if (elements.totalTime) {
             elements.totalTime.textContent = formatTime(audio.duration);
         }
+        // Bug Fix #3: Persist position to state so it survives pause/play cycles
+        state.originalFilePosition = audio.currentTime;
     }
 }
 
@@ -1627,6 +1866,22 @@ function handleOriginalMetadataLoaded() {
         elements.totalTime.textContent = formatTime(duration);
     }
     console.log('Original file metadata loaded:', duration, 'seconds');
+
+    // Bug Fix #3: Restore saved position from playOriginalFile
+    // This takes precedence over pendingSeekPosition (which is for user-initiated seeks)
+    if (state.originalFilePosition > 0) {
+        const position = state.originalFilePosition;
+        console.log('Restoring saved original file position:', position, 's');
+        window.originalAudioPlayer.currentTime = position;
+        state.originalFilePosition = 0;  // Clear after restoring
+    }
+    // Apply pending seek position if exists (only if no saved position was restored)
+    else if (state.pendingSeekPosition !== null) {
+        const seekTime = (state.pendingSeekPosition / 100) * duration;
+        console.log('Applying pending seek to original file:', state.pendingSeekPosition, '% ->', seekTime, 's');
+        window.originalAudioPlayer.currentTime = seekTime;
+        state.pendingSeekPosition = null;
+    }
 }
 
 /**
@@ -1658,7 +1913,9 @@ function handleOriginalPause() {
         allPaused = false;
     }
 
-    if (allPaused) {
+    // Bug Fix #5: Only update state if it's currently playing
+    // This prevents race condition with pause() which already set isPlaying = false
+    if (allPaused && state.isPlaying) {
         state.isPlaying = false;
         updatePlayState();
         stopRealtimeVisualization();
@@ -1732,6 +1989,30 @@ function stopPeriodicSync() {
 }
 
 /**
+ * Toggle Play/Pause - Unified play/pause toggle for the main button
+ */
+function togglePlayPause() {
+    console.log('=== togglePlayPause() called ===');
+    console.log('Current state - isPlaying:', state.isPlaying);
+
+    if (state.isPlaying) {
+        // Currently playing -> Pause
+        console.log('Pausing playback');
+        pause();
+    } else {
+        // Currently stopped/paused -> Play or Resume
+        const existingAudio = document.querySelectorAll('audio[data-track]');
+        if (existingAudio.length > 0) {
+            console.log('Resuming playback');
+            resume();
+        } else {
+            console.log('Starting playback');
+            play();
+        }
+    }
+}
+
+/**
  * Pause - Pause all audio elements
  */
 function pause() {
@@ -1783,15 +2064,17 @@ function resume() {
     }
 
     // Check if all audio elements are actually paused (not stopped)
+    // Bug Fix #1: Removed `|| audio.currentTime === 0` check
+    // A paused audio at position 0 is still valid to resume
     let allPaused = true;
     allAudio.forEach(audio => {
-        if (!audio.paused || audio.currentTime === 0) {
+        if (!audio.paused) {
             allPaused = false;
         }
     });
 
     if (!allPaused) {
-        console.log('Audio elements are not all paused (some might be at position 0), using full play()');
+        console.log('Audio elements are not all paused, using full play()');
         play();
         return;
     }
@@ -1847,6 +2130,16 @@ function stop() {
     updatePlayState();
     stopRealtimeVisualization();
     stopPeriodicSync();
+
+    // Reset seek bar and time display
+    if (elements.seekBar) elements.seekBar.value = 0;
+    if (elements.currentTime) elements.currentTime.textContent = '0:00';
+
+    // Clear pending seek position and stored seek time
+    state.pendingSeekPosition = null;
+    state.storedSeekTime = null;
+    state.originalFilePosition = 0;  // Bug Fix #3: Also clear original file position
+
     showToast('已停止', 'info');
 }
 
@@ -1861,22 +2154,32 @@ function seek() {
     const seekPercent = elements.seekBar.value;
     console.log('Seek bar value:', seekPercent);
 
-    // Handle seek for original file preview (when state.selectedFile exists but not separated)
-    if (state.selectedFile && !state.selectedFile.isSeparated) {
-        if (!window.originalAudioPlayer || !window.originalAudioPlayer.duration) {
-            console.log('Original audio player not ready yet');
-            return;
-        }
+    // Determine which audio source is active
+    // Check if we're playing separated tracks (has selected tracks AND separated track audio elements exist)
+    const separatedAudio = document.querySelectorAll('audio[data-track]:not([data-track="original"])');
+    const hasSeparatedTracksPlaying = state.selectedTracks.length > 0 && separatedAudio.length > 0;
 
+    // Check if original audio is currently playing
+    const isOriginalPlaying = window.originalAudioPlayer && !window.originalAudioPlayer.paused;
+
+    if (hasSeparatedTracksPlaying) {
+        // Seek separated tracks - fall through to the main seek logic below
+        console.log('Seeking separated tracks');
+    } else if (isOriginalPlaying) {
+        // Original file is actively playing - seek it directly
+        console.log('Original file is playing, seeking it');
         const seekTime = (seekPercent / 100) * window.originalAudioPlayer.duration;
         console.log(`Seeking original file to: ${seekTime}s (${seekPercent}%)`);
-
         window.originalAudioPlayer.currentTime = seekTime;
         return;
-    }
-
-    // If no tracks selected yet, store the seek position for later
-    if (state.selectedTracks.length === 0) {
+    } else if (state.selectedTracks.length > 0) {
+        // Tracks are selected but no separated audio elements exist yet
+        // Store the seek position for when audio elements are created
+        console.log('Tracks selected but no audio elements yet - storing pending seek position:', seekPercent);
+        state.pendingSeekPosition = seekPercent;
+        return;
+    } else if (state.selectedTracks.length === 0) {
+        // No tracks selected yet - store the seek position for later
         console.log('No tracks selected - storing pending seek position:', seekPercent);
         state.pendingSeekPosition = seekPercent;
         return;
@@ -1988,14 +2291,15 @@ function updateProgress() {
 
     let mainAudio = null;
 
-    // First, check if original audio player is playing
-    if (window.originalAudioPlayer && !window.originalAudioPlayer.paused &&
+    // First, check if original audio player is playing (only when no separated tracks selected)
+    if (state.selectedTracks.length === 0 && window.originalAudioPlayer &&
+        !window.originalAudioPlayer.paused &&
         window.originalAudioPlayer.duration && !isNaN(window.originalAudioPlayer.duration)) {
         mainAudio = window.originalAudioPlayer;
     }
 
     // Then prefer a playing separated track audio element with duration
-    if (!mainAudio) {
+    if (!mainAudio && allAudio.length > 0) {
         for (const audio of allAudio) {
             if (!audio.paused && audio.duration && !isNaN(audio.duration)) {
                 mainAudio = audio;
@@ -2004,23 +2308,20 @@ function updateProgress() {
         }
     }
 
-    // Fallback: any audio element (including original) with duration
-    if (!mainAudio) {
-        if (window.originalAudioPlayer && window.originalAudioPlayer.duration && !isNaN(window.originalAudioPlayer.duration)) {
-            mainAudio = window.originalAudioPlayer;
-        } else {
-            for (const audio of allAudio) {
-                if (audio.duration && !isNaN(audio.duration)) {
-                    mainAudio = audio;
-                    break;
-                }
+    // Fallback: any separated track audio element with duration (even if paused)
+    if (!mainAudio && allAudio.length > 0) {
+        for (const audio of allAudio) {
+            if (audio.duration && !isNaN(audio.duration)) {
+                mainAudio = audio;
+                break;
             }
         }
     }
 
-    // Last resort: elements.audioPlayer
-    if (!mainAudio && elements.audioPlayer && elements.audioPlayer.duration) {
-        mainAudio = elements.audioPlayer;
+    // For original file playback (no separated tracks selected)
+    if (!mainAudio && state.selectedTracks.length === 0 && window.originalAudioPlayer &&
+        window.originalAudioPlayer.duration && !isNaN(window.originalAudioPlayer.duration)) {
+        mainAudio = window.originalAudioPlayer;
     }
 
     if (mainAudio && mainAudio.duration && !isNaN(mainAudio.duration)) {
@@ -2049,13 +2350,14 @@ function updateDuration() {
 
     let mainAudio = null;
 
-    // First check original audio player
-    if (window.originalAudioPlayer && window.originalAudioPlayer.duration && !isNaN(window.originalAudioPlayer.duration)) {
+    // First check original audio player (only when no separated tracks selected)
+    if (state.selectedTracks.length === 0 && window.originalAudioPlayer &&
+        window.originalAudioPlayer.duration && !isNaN(window.originalAudioPlayer.duration)) {
         mainAudio = window.originalAudioPlayer;
     }
 
     // Then find a separated track audio element with valid duration
-    if (!mainAudio) {
+    if (!mainAudio && allAudio.length > 0) {
         for (const audio of allAudio) {
             console.log(`  Checking ${audio.dataset.track}: duration=${audio.duration}, isNaN=${isNaN(audio.duration)}`);
             if (audio.duration && !isNaN(audio.duration)) {
@@ -2066,9 +2368,10 @@ function updateDuration() {
         }
     }
 
-    // Fallback: elements.audioPlayer
-    if (!mainAudio && elements.audioPlayer && elements.audioPlayer.duration) {
-        mainAudio = elements.audioPlayer;
+    // For original file playback (no separated tracks selected)
+    if (!mainAudio && state.selectedTracks.length === 0 && window.originalAudioPlayer &&
+        window.originalAudioPlayer.duration && !isNaN(window.originalAudioPlayer.duration)) {
+        mainAudio = window.originalAudioPlayer;
     }
 
     if (mainAudio && mainAudio.duration && !isNaN(mainAudio.duration)) {
@@ -2104,20 +2407,54 @@ function updateTotalTimeForSelectedTracks() {
 function updateNowPlayingDisplay() {
     if (!elements.nowPlayingContent) return;
 
-    // Generate song info bar if we have a selected file
+    // Generate song info bar if we have an uploaded file
     let songInfoHTML = '';
-    if (state.selectedFile) {
-        songInfoHTML = generateSongInfoBar(state.selectedFile, state.selectedFile.source || 'upload', 'ready');
+    if (state.uploadedFile && state.uploadedFile.name) {
+        songInfoHTML = generateSongInfoBar(state.uploadedFile);
     }
 
-    // If no tracks are selected, show just the song info bar + placeholder
+    // If no tracks are selected, show the song info bar + play original button
     if (state.selectedTracks.length === 0) {
+        // Show play original button if we have an uploaded file (original song available)
+        let playOriginalHTML = '';
+        if (state.uploadedFile && state.uploadedFile.name) {
+            playOriginalHTML = `
+                <button id="playOriginalBtn" class="btn-primary" style="flex: 1; min-width: 140px;">
+                    <span class="icon">▶</span> 播放完整歌曲
+                </button>
+            `;
+            // Also update total time display with the original file's duration
+            if (elements.totalTime && state.uploadedFile.duration) {
+                elements.totalTime.textContent = formatTime(state.uploadedFile.duration);
+            }
+        } else {
+            playOriginalHTML = `
+                <span class="placeholder-text">
+                    <span class="icon">🎵</span>
+                    选择音轨开始播放
+                </span>
+            `;
+        }
+
         elements.nowPlayingContent.innerHTML = `
             <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
                 ${songInfoHTML}
-                <div class="placeholder-text" style="margin-top: 8px;">选择音轨开始播放</div>
+                <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; min-height: 32px;">
+                    ${playOriginalHTML}
+                </div>
             </div>
         `;
+
+        // Add click handler for play original button
+        if (state.uploadedFile && state.uploadedFile.name) {
+            const playOriginalBtn = document.getElementById('playOriginalBtn');
+            if (playOriginalBtn) {
+                playOriginalBtn.addEventListener('click', () => {
+                    console.log('Play original button clicked');
+                    play();
+                });
+            }
+        }
         return;
     }
 
@@ -2139,7 +2476,7 @@ function updateNowPlayingDisplay() {
     elements.nowPlayingContent.innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
             ${songInfoHTML}
-            <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center;">
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; min-height: 32px;">
                 ${badges}
             </div>
         </div>
@@ -2152,68 +2489,77 @@ function updateNowPlayingDisplay() {
 function handleTrackEnd() {
     if (!state.isLooping) {
         stopRealtimeVisualization();
+        state.isPlaying = false;
+        updatePlayState();
+
+        // Clear seek-related state when track ends
+        state.pendingSeekPosition = null;
+        state.storedSeekTime = null;
     }
 }
 
 /**
  * Update Play State
+ * Updates the unified play/pause toggle button and stop button based on current state
  */
 function updatePlayState() {
-    if (!elements.playBtn) return;
+    if (!elements.playPauseBtn) return;
 
-    // Play button: disabled when playing, enabled when stopped/paused
-    // Shrink to size 56 when playing
-    if (state.isPlaying) {
-        elements.playBtn.style.opacity = '0.5';
-        elements.playBtn.disabled = true;
-        elements.playBtn.style.width = '56px';
-        elements.playBtn.style.height = '56px';
+    // Check if audio is available (either selected tracks or original file)
+    const hasAudio = state.selectedTracks.length > 0 ||
+                     state.selectedFile !== null ||
+                     (window.originalAudioPlayer && window.originalAudioPlayer.src);
+
+    // Play/Pause Toggle: Always enabled when audio is available
+    if (hasAudio) {
+        elements.playPauseBtn.disabled = false;
+        elements.playPauseBtn.style.opacity = '1';
+
+        // Update icon and visual state
+        if (state.isPlaying) {
+            // Playing state - show pause icon, amber glow
+            if (elements.playPauseIcon) {
+                elements.playPauseIcon.textContent = '⏸';
+            }
+            elements.playPauseBtn.style.background = 'rgba(251, 191, 36, 0.25)';
+            elements.playPauseBtn.style.borderColor = 'rgba(251, 191, 36, 0.6)';
+            elements.playPauseBtn.style.boxShadow = '0 0 15px rgba(251, 191, 36, 0.3)';
+        } else {
+            // Paused/Stopped state - show play icon, no glow
+            if (elements.playPauseIcon) {
+                elements.playPauseIcon.textContent = '▶';
+            }
+            elements.playPauseBtn.style.background = '';
+            elements.playPauseBtn.style.borderColor = '';
+            elements.playPauseBtn.style.boxShadow = '';
+        }
     } else {
-        elements.playBtn.style.opacity = '1';
-        elements.playBtn.disabled = false;
-        elements.playBtn.style.width = '';
-        elements.playBtn.style.height = '';
+        // No audio available - disable toggle
+        elements.playPauseBtn.disabled = true;
+        elements.playPauseBtn.style.opacity = '0.5';
+        elements.playPauseBtn.style.background = '';
+        elements.playPauseBtn.style.borderColor = '';
+        elements.playPauseBtn.style.boxShadow = '';
+        if (elements.playPauseIcon) {
+            elements.playPauseIcon.textContent = '▶';
+        }
     }
 
-    // Stop button: disabled when not playing, enlarge when playing
+    // Stop button: enabled when audio is available (playing or paused)
+    // This allows users to stop/reset even when paused
     if (elements.stopBtn) {
-        if (state.isPlaying) {
+        if (hasAudio) {
             elements.stopBtn.disabled = false;
             elements.stopBtn.style.opacity = '1';
             elements.stopBtn.style.background = 'rgba(239, 68, 68, 0.2)';
             elements.stopBtn.style.borderColor = 'rgba(239, 68, 68, 0.5)';
-            elements.stopBtn.style.width = '64px';
-            elements.stopBtn.style.height = '64px';
             elements.stopBtn.style.boxShadow = '0 0 15px rgba(239, 68, 68, 0.3)';
         } else {
             elements.stopBtn.disabled = true;
             elements.stopBtn.style.opacity = '0.6';
             elements.stopBtn.style.background = '';
             elements.stopBtn.style.borderColor = '';
-            elements.stopBtn.style.width = '';
-            elements.stopBtn.style.height = '';
             elements.stopBtn.style.boxShadow = '';
-        }
-    }
-
-    // Pause button: disabled when not playing, enlarge when playing
-    if (elements.pauseBtn) {
-        if (state.isPlaying) {
-            elements.pauseBtn.disabled = false;
-            elements.pauseBtn.style.opacity = '1';
-            elements.pauseBtn.style.background = 'rgba(251, 191, 36, 0.2)';
-            elements.pauseBtn.style.borderColor = 'rgba(251, 191, 36, 0.5)';
-            elements.pauseBtn.style.width = '64px';
-            elements.pauseBtn.style.height = '64px';
-            elements.pauseBtn.style.boxShadow = '0 0 15px rgba(251, 191, 36, 0.3)';
-        } else {
-            elements.pauseBtn.disabled = true;
-            elements.pauseBtn.style.opacity = '0.6';
-            elements.pauseBtn.style.background = '';
-            elements.pauseBtn.style.borderColor = '';
-            elements.pauseBtn.style.width = '';
-            elements.pauseBtn.style.height = '';
-            elements.pauseBtn.style.boxShadow = '';
         }
     }
 }
@@ -2539,6 +2885,7 @@ function handleFileSelect(e) {
 
 /**
  * Upload file to server and show preview
+ * Clears existing files first if an uploadedFile already exists
  */
 async function uploadFileForPreview(file) {
     if (!state.apiConnected) {
@@ -2546,8 +2893,24 @@ async function uploadFileForPreview(file) {
         return;
     }
 
-    // Set uploading state
+    // NEW: Clear existing files before uploading a new one (one file at a time)
+    if (state.uploadedFile && state.uploadedFile.name) {
+        console.log('Clearing existing uploaded file before new upload:', state.uploadedFile.name);
+        try {
+            await fetch(`${API_BASE_URL}/separation/clear`, { method: 'POST' });
+            // Clear state
+            state.uploadedFile = { name: null, path: null, size: null, duration: null, source: null, timestamp: null, isSeparated: false };
+            state.selectedFile = null;  // Keep deprecated field in sync
+        } catch (clearError) {
+            console.warn('Failed to clear existing files:', clearError);
+        }
+    }
+
+    // Set processing state
+    state.processing = true;
+    state.processingType = 'upload';
     state.isUploading = true;
+
     if (elements.uploadBtn) {
         elements.uploadBtn.disabled = true;
         elements.uploadBtn.textContent = '⏳ 上传中';
@@ -2582,7 +2945,18 @@ async function uploadFileForPreview(file) {
             // Show file preview from server
             showFilePreviewFromServer(result.file_info);
 
-            // Store selected file info
+            // NEW: Store in unified uploadedFile state
+            state.uploadedFile = {
+                name: result.file_info.name,
+                path: `storage/uploaded/${result.file_info.name}`,  // Construct path
+                size: result.file_info.size,
+                duration: result.file_info.duration,
+                source: 'upload',
+                timestamp: Date.now(),
+                isSeparated: false,
+            };
+
+            // NEW: Keep deprecated selectedFile in sync for backward compatibility
             state.selectedFile = {
                 name: result.file_info.name,
                 size: result.file_info.size,
@@ -2604,8 +2978,10 @@ async function uploadFileForPreview(file) {
             cancelFilePreview();
         }, 2000);
     } finally {
-        // Reset uploading state
+        // Reset processing state
         state.isUploading = false;
+        state.processing = false;
+        state.processingType = null;
         if (elements.uploadBtn) {
             elements.uploadBtn.disabled = false;
             elements.uploadBtn.textContent = '+ 上传';
@@ -2641,14 +3017,22 @@ function showFilePreviewFromServer(fileInfo) {
 /**
  * Generate compact song info bar HTML
  * Shows song info in a compact, persistent bar at the top of the now-playing card
+ * Uses uploadedFile if fileInfo is not provided
  */
-function generateSongInfoBar(fileInfo, source = 'upload', status = 'ready') {
-    const sizeMB = (fileInfo.size / (1024 * 1024)).toFixed(1);
-    const extension = fileInfo.name.split('.').pop() || '未知格式';
-    const truncatedName = fileInfo.name.length > 30 ? fileInfo.name.substring(0, 30) + '...' : fileInfo.name;
+function generateSongInfoBar(fileInfo = null, source = null, status = 'ready') {
+    // Use uploadedFile if no fileInfo provided (for backward compatibility)
+    const info = fileInfo || state.uploadedFile;
+    if (!info) {
+        return '';
+    }
+
+    const sizeMB = (info.size / (1024 * 1024)).toFixed(1);
+    const extension = info.name.split('.').pop() || '未知格式';
+    const truncatedName = info.name.length > 30 ? info.name.substring(0, 30) + '...' : info.name;
+    const src = source || info.source || 'upload';
 
     // Source badge
-    const sourceBadge = source === 'youtube'
+    const sourceBadge = src === 'youtube'
         ? '<span class="song-info-source">YouTube</span>'
         : '<span class="song-info-source">本地</span>';
 
@@ -2658,11 +3042,11 @@ function generateSongInfoBar(fileInfo, source = 'upload', status = 'ready') {
             <div class="song-info-details">
                 <div class="song-info-item">
                     <span class="song-info-label">文件名</span>
-                    <span class="song-info-value truncated" title="${fileInfo.name}">${truncatedName}</span>
+                    <span class="song-info-value truncated" title="${info.name}">${truncatedName}</span>
                 </div>
                 <div class="song-info-item">
                     <span class="song-info-label">时长</span>
-                    <span class="song-info-value">${formatTime(fileInfo.duration)}</span>
+                    <span class="song-info-value">${formatTime(info.duration)}</span>
                 </div>
                 <div class="song-info-item">
                     <span class="song-info-label">格式</span>
@@ -2719,13 +3103,8 @@ function showPreviewInNowPlayingCard(fileInfo, showProcessButton = true) {
     if (showProcessButton) {
         const processNowBtn = document.getElementById('processNowBtn');
         if (processNowBtn) {
-            processNowBtn.addEventListener('click', () => {
-                if (state.selectedFile && state.selectedFile.source === 'youtube') {
-                    separateYouTubeFile();
-                } else {
-                    processSelectedFile();
-                }
-            });
+            // NEW: Use unified processUploadedFile function for both upload and YouTube sources
+            processNowBtn.addEventListener('click', processUploadedFile);
         }
     }
 }
@@ -2802,11 +3181,14 @@ function cancelFilePreview() {
 }
 
 /**
+ * DEPRECATED: Use processUploadedFile() instead
  * Process the selected file (start separation)
  * File is already uploaded to storage/uploaded/, now process it
  * Uses Server-Sent Events (SSE) for real-time progress updates
  */
 async function processSelectedFile() {
+    // DEPRECATED: Use processUploadedFile() instead
+    console.warn('processSelectedFile() is deprecated, use processUploadedFile() instead');
     if (!state.selectedFile) {
         showToast('请先选择文件', 'warning');
         return;
@@ -2932,6 +3314,168 @@ async function processSelectedFile() {
 }
 
 /**
+ * Unified file processing function - handles both direct upload and YouTube download
+ * This replaces processSelectedFile() and separateYouTubeFile() with a single function
+ * The file must already exist in storage/uploaded/ (either uploaded or downloaded)
+ */
+async function processUploadedFile() {
+    // NEW: Use uploadedFile as source of truth
+    if (!state.uploadedFile || !state.uploadedFile.name) {
+        showToast('请先上传或下载音频文件', 'warning');
+        return;
+    }
+
+    if (!state.apiConnected) {
+        showToast('API 未连接', 'error');
+        return;
+    }
+
+    // NEW: Validate file still exists on server
+    try {
+        const checkResponse = await fetch(`${API_BASE_URL}/tracks/info/${encodeURIComponent(state.uploadedFile.name)}`);
+        if (!checkResponse.ok) {
+            showToast('文件已过期，请重新上传', 'error');
+            // Clear the expired file state
+            state.uploadedFile = { name: null, path: null, size: null, duration: null, source: null, timestamp: null, isSeparated: false };
+            state.selectedFile = null;
+            clearPreviewFromNowPlayingCard();
+            return;
+        }
+    } catch (error) {
+        console.warn('File existence check failed:', error);
+    }
+
+    // Set processing state
+    state.processing = true;
+    state.processingType = 'separation';
+
+    // Hide progress section in uploadPanel (we show progress in now-playing card instead)
+    if (elements.uploadProgress) {
+        elements.uploadProgress.classList.add('hidden');
+    }
+
+    // File is already uploaded to storage/uploaded/
+    // Now call separation to process it with streaming progress
+    const formData = new FormData();
+    formData.append('filename', state.uploadedFile.name);
+
+    // IMMEDIATE BUTTON DISABLE AND VISUAL FEEDBACK
+    // Disable the Process button immediately
+    if (elements.confirmUploadBtn) {
+        elements.confirmUploadBtn.disabled = true;
+        elements.confirmUploadBtn.textContent = '处理中...';
+        elements.confirmUploadBtn.style.opacity = '0.6';
+        elements.confirmUploadBtn.style.cursor = 'not-allowed';
+    }
+
+    // Disable other interactive elements in uploadPanel
+    if (elements.cancelUploadBtn) {
+        elements.cancelUploadBtn.disabled = true;
+    }
+
+    // Add processing state to upload panel (dims it, shows overlay "⏳ 处理中...")
+    if (elements.uploadPanel) {
+        elements.uploadPanel.classList.add('processing');
+    }
+
+    // Add disabled state to upload dropzone
+    const uploadDropzone = document.querySelector('.upload-dropzone');
+    if (uploadDropzone) {
+        uploadDropzone.classList.remove('uploaded');
+        uploadDropzone.classList.add('disabled');
+    }
+
+    // Stop any currently playing audio
+    if (window.originalAudioPlayer && !window.originalAudioPlayer.paused) {
+        window.originalAudioPlayer.pause();
+    }
+    state.isPlaying = false;
+    updatePlayState();
+
+    // Show initial processing progress in now-playing card
+    showProcessingInNowPlayingCard('准备分离...', 0, 0, 0);
+
+    try {
+        // Use SSE endpoint for real-time progress
+        const response = await fetch(`${API_BASE_URL}/separation/separate_by_name_stream`, {
+            method: 'POST',
+            body: formData,
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        // Create EventSource for streaming progress
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        // Function to handle streaming data
+        const processStream = async () => {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+
+                // Process complete SSE events (separated by double newlines)
+                const events = buffer.split('\n\n');
+                buffer = events.pop(); // Keep incomplete data in buffer
+
+                for (const event of events) {
+                    if (event.startsWith('data: ')) {
+                        const dataStr = event.slice(6); // Remove 'data: ' prefix
+                        try {
+                            const data = JSON.parse(dataStr);
+                            handleProgressUpdate(data);
+                        } catch (e) {
+                            console.warn('Failed to parse progress data:', e);
+                        }
+                    }
+                }
+            }
+        };
+
+        await processStream();
+
+    } catch (error) {
+        console.error('Separation error:', error);
+        showToast(`分离失败: ${error.message}`, 'error');
+
+        // Hide processing progress in now-playing card
+        hideProcessingInNowPlayingCard();
+
+        // Remove processing state from upload panel
+        if (elements.uploadPanel) {
+            elements.uploadPanel.classList.remove('processing');
+        }
+
+        // Restore dropzone to uploaded state (so user can retry)
+        const uploadDropzone = document.querySelector('.upload-dropzone');
+        if (uploadDropzone) {
+            uploadDropzone.classList.remove('disabled');
+            uploadDropzone.classList.add('uploaded');
+        }
+
+        // Re-enable the Process button on error
+        if (elements.confirmUploadBtn) {
+            elements.confirmUploadBtn.disabled = false;
+            elements.confirmUploadBtn.textContent = '处理';
+            elements.confirmUploadBtn.style.opacity = '1';
+            elements.confirmUploadBtn.style.cursor = 'pointer';
+        }
+        if (elements.cancelUploadBtn) {
+            elements.cancelUploadBtn.disabled = false;
+        }
+
+        // Reset processing state on error
+        state.processing = false;
+        state.processingType = null;
+    }
+}
+
+/**
  * Handle real-time progress updates from SSE stream
  * Shows progress in now-playing card instead of uploadPanel
  */
@@ -2946,10 +3490,19 @@ function handleProgressUpdate(data) {
 
     // Handle completion
     if (stage === 'complete' || status === 'success') {
-        // Mark selected file as separated
+        // NEW: Mark uploaded file as separated
+        if (state.uploadedFile && state.uploadedFile.name) {
+            state.uploadedFile.isSeparated = true;
+        }
+
+        // NEW: Keep deprecated selectedFile in sync for backward compatibility
         if (state.selectedFile) {
             state.selectedFile.isSeparated = true;
         }
+
+        // Reset processing state
+        state.processing = false;
+        state.processingType = null;
 
         // Update UI: Show track list with success message
         updateAfterSeparation().then(() => {
@@ -3002,10 +3555,10 @@ function showProcessingInNowPlayingCard(message, percentage, current, total) {
         ? `进度: ${current}/${total} (${Math.round((current / total) * 100)}%)`
         : '';
 
-    // Generate song info bar if we have a selected file
+    // Generate song info bar if we have an uploaded file
     let songInfoHTML = '';
-    if (state.selectedFile) {
-        songInfoHTML = generateSongInfoBar(state.selectedFile, state.selectedFile.source || 'upload', 'processing');
+    if (state.uploadedFile && state.uploadedFile.name) {
+        songInfoHTML = generateSongInfoBar(state.uploadedFile);
     }
 
     elements.nowPlayingContent.innerHTML = `
@@ -3151,6 +3704,7 @@ function updateYouTubeProgressUI(text, percent) {
 /**
  * Handle YouTube Download
  * Downloads to storage/uploaded/ then updates UI
+ * Clears existing files before download (one file at a time)
  */
 async function handleYouTubeDownload() {
     if (!state.apiConnected) {
@@ -3163,6 +3717,23 @@ async function handleYouTubeDownload() {
         showToast('请输入 YouTube 视频链接', 'warning');
         return;
     }
+
+    // NEW: Clear existing files before YouTube download (one file at a time)
+    if (state.uploadedFile && state.uploadedFile.name) {
+        console.log('Clearing existing uploaded file before YouTube download:', state.uploadedFile.name);
+        try {
+            await fetch(`${API_BASE_URL}/separation/clear`, { method: 'POST' });
+            // Clear state
+            state.uploadedFile = { name: null, path: null, size: null, duration: null, source: null, timestamp: null, isSeparated: false };
+            state.selectedFile = null;  // Keep deprecated field in sync
+        } catch (clearError) {
+            console.warn('Failed to clear existing files:', clearError);
+        }
+    }
+
+    // Set processing state
+    state.processing = true;
+    state.processingType = 'download';
 
     // Show progress
     elements.youtubeProgress?.classList.remove('hidden');
@@ -3192,6 +3763,10 @@ async function handleYouTubeDownload() {
             if (elements.youtubeUrl) elements.youtubeUrl.value = '';
             if (elements.youtubeName) elements.youtubeName.value = '';
 
+            // Reset processing state
+            state.processing = false;
+            state.processingType = null;
+
             // Show preview with play controls for the downloaded file
             await showYouTubePreview(result.data);
 
@@ -3210,18 +3785,34 @@ async function handleYouTubeDownload() {
         setTimeout(() => {
             elements.youtubeProgress?.classList.add('hidden');
         }, 2000);
+
+        // Reset processing state on error
+        state.processing = false;
+        state.processingType = null;
     }
 }
 
 /**
  * Show YouTube download preview with play controls
  * Allows user to listen to original file before separation
+ * Note: YouTube download already clears existing files before download (in handleYouTubeDownload)
  */
 async function showYouTubePreview(downloadResult) {
     const filename = downloadResult.file_path.split('/').pop();
     const duration = downloadResult.duration;
 
-    // Set state.selectedFile with downloaded file info
+    // NEW: Store in unified uploadedFile state
+    state.uploadedFile = {
+        name: filename,
+        path: downloadResult.file_path,
+        duration: duration,
+        source: 'youtube',
+        timestamp: Date.now(),
+        isSeparated: false,
+        size: downloadResult.size || 0
+    };
+
+    // NEW: Keep deprecated selectedFile in sync for backward compatibility
     state.selectedFile = {
         name: filename,
         path: downloadResult.file_path,
@@ -3246,7 +3837,7 @@ async function showYouTubePreview(downloadResult) {
     if (elements.nowPlayingContent) {
         elements.nowPlayingContent.innerHTML = `
             <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
-                ${generateSongInfoBar(state.selectedFile, 'youtube', 'ready')}
+                ${generateSongInfoBar(state.uploadedFile, 'youtube', 'ready')}
                 <div style="display: flex; gap: 8px; margin-top: 8px;">
                     <button id="playPreviewBtn" class="btn-secondary" style="flex: 1;">▶ 播放预览</button>
                     <button id="separateBtn" class="btn-primary" style="flex: 1;">分离处理</button>
@@ -3262,7 +3853,8 @@ async function showYouTubePreview(downloadResult) {
 
         const separateBtn = document.getElementById('separateBtn');
         if (separateBtn) {
-            separateBtn.addEventListener('click', separateYouTubeFile);
+            // Use unified processUploadedFile function
+            separateBtn.addEventListener('click', processUploadedFile);
         }
     }
 
@@ -3292,10 +3884,13 @@ async function showYouTubePreview(downloadResult) {
 }
 
 /**
+ * DEPRECATED: Use processUploadedFile() instead
  * Separate downloaded YouTube file
  * The file is in storage/uploaded/, now run separation on it
  */
 async function separateYouTubeFile() {
+    // DEPRECATED: Use processUploadedFile() instead
+    console.warn('separateYouTubeFile() is deprecated, use processUploadedFile() instead');
     if (!state.selectedFile || !state.selectedFile.name) {
         showToast('请先下载 YouTube 音频', 'warning');
         return;

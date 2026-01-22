@@ -40,10 +40,12 @@ A modern web interface for the Drum Trainer project, featuring:
 - **Key/tonality**: Musical key detection
 
 ### 5. File Upload
-- Upload audio files (MP3, WAV, FLAC, OGG)
+- Upload audio files (MP3, WAV, FLAC, OGG, M4A)
 - Automatic drum separation via Demucs AI
 - Integration with music analysis
 - Progress indicators
+
+**YouTube Download**: Downloads audio as M4A (AAC) format at 192kbps for universal browser compatibility.
 
 ### 6. Keyboard Shortcuts
 | Key | Action |
@@ -129,6 +131,39 @@ http://localhost:8000/ui
 - **FastAPI** - Web server and API
 - **Demucs AI** - Drum separation
 - **Music Analysis V2** - BPM and style detection
+- **yt-dlp** - YouTube audio download (M4A format)
+
+## 🎵 Audio Format Support
+
+### Input Formats (Direct Upload)
+| Format | Codec | Notes |
+|--------|-------|-------|
+| MP3 | MPEG-1/2 Audio Layer III | Most common, good compatibility |
+| WAV | PCM (lossless) | Uncompressed, highest quality |
+| FLAC | Free Lossless Audio Codec | Lossless compression |
+| OGG | Vorbis | Open format, good compression |
+| M4A | AAC | Apple format, good quality/size |
+
+### YouTube Downloads
+- **Format**: M4A (AAC codec)
+- **Bitrate**: 192kbps
+- **Why**: Universal browser compatibility (including Safari/iOS), Demucs compatible
+- **Size**: ~5-10MB for 5min song
+
+### Separation Output
+- **Format**: WAV (uncompressed)
+- **Tracks**: drums.wav, bass.wav, other.wav, vocals.wav (4-source)
+- **Additional** (htdemucs_6s): piano.wav, guitar.wav
+- **Size**: ~50MB per track
+- **Note**: Lossless output for professional audio quality
+
+### Browser Compatibility
+| Browser | Playback | Upload | YouTube Download |
+|---------|----------|--------|------------------|
+| Chrome | ✅ Full | ✅ Full | ✅ Full |
+| Firefox | ✅ Full | ✅ Full | ✅ Full |
+| Safari | ✅ Full | ✅ Full | ✅ Full (M4A) |
+| Edge | ✅ Full | ✅ Full | ✅ Full |
 
 ## 🎛️ Web Audio API Features
 

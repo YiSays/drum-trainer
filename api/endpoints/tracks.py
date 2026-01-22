@@ -218,9 +218,10 @@ async def get_audio_file(filename: str):
         path=file_path,
         filename=file_path.name,
         media_type=media_type,
-        # 启用范围请求（支持seek）
+        # 启用范围请求（支持seek）和内联播放
         headers={
             "Accept-Ranges": "bytes",
+            "Content-Disposition": "inline",  # Allow browser to play audio inline
         }
     )
 
@@ -358,8 +359,9 @@ async def get_original_audio(filename: str):
         path=file_path,
         filename=file_path.name,
         media_type=media_type,
-        # 启用范围请求（支持seek）
+        # 启用范围请求（支持seek）和内联播放
         headers={
             "Accept-Ranges": "bytes",
+            "Content-Disposition": "inline",  # Allow browser to play audio inline
         }
     )

@@ -2,15 +2,40 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Recent Changes (2026-01-21)
+## Recent Changes (2026-01-22)
 
-### Model & Cleanup Updates
+### Audio Format Optimization
+
+#### YouTube Download Format - M4A (AAC)
+- **Fixed YouTube downloads to use M4A format instead of WEBM**
+- Changed from deprecated `audioformat` option to proper `postprocessors` with `FFmpegExtractAudio`
+- **Format**: M4A (AAC codec) at 192kbps
+- **Why M4A**: Universal browser compatibility (including Safari/iOS), better Demucs compatibility
+- **Size**: ~5-10MB for 5min song (similar to WEBM)
+
+#### File Upload Format Support
+- **Explicit MIME type support** for better browser compatibility:
+  - MP3, WAV, FLAC, OGG, M4A, WEBM
+- **Updated upload hint**: Now includes M4A in supported formats list
+- All formats supported via `librosa` + `soundfile` automatic conversion
+
+#### Audio Playback Enhancement
+- **Fixed inline audio playback**: Added `Content-Disposition: inline` header to FileResponse
+- **Benefit**: Audio now plays directly in browser instead of forcing download
+- **Applies to**: `/tracks/audio/{filename}` and `/tracks/audio/original/{filename}` endpoints
+
+#### Separation Output (No Change)
+- **WAV format retained**: Demucs native output format (lossless)
+- **File size**: ~50MB per track (drums, bass, other, vocals)
+- **Reasoning**: Lossless quality essential for professional audio work
+
+### Model & Cleanup Updates (Previously)
 - **Default model changed from `htdemucs_ft` to `htdemucs`**: The default separation model is now the standard 4-source model (drums, bass, other, vocals) for better stability
 - **Auto-cleanup on startup**: Files older than 24 hours in `storage/uploaded/` are automatically deleted on server startup
 - **Manual cleanup endpoint**: Added `GET /cleanup?max_age_hours=N` for manual cleanup
 - **Cache-busting**: Updated web UI version parameter to force browser cache refresh
 
-### Web UI Enhancements
+### Web UI Enhancements (Previously)
 - **Song info bar persistence**: The song info bar now stays visible as long as a file exists in `storage/uploaded/`
   - Shows after upload, during separation, and after completion
   - Only removed when user clicks "Clear"
@@ -18,7 +43,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Improved layout**: `song-info-details` now uses full width, filename truncation uses available space
 - **Style updates**: Better visual design with glassmorphism effects
 
-### Bug Fixes
+### Bug Fixes (Previously)
 - Fixed 500 error caused by datetime import conflict in `api/server.py`
 - Fixed `loadTracks()` not calling `updateNowPlayingDisplay()` to show song info bar
 - Fixed `state.selectedFile` not being properly set during upload (missing `source` and `isSeparated`)

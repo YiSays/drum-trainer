@@ -113,10 +113,13 @@ class YouTubeDownloader:
 
         # yt-dlp 配置 - 下载到 output_dir 根目录，不创建子文件夹
         ydl_opts = {
-            # 音频提取配置
+            # 音频提取配置 - 使用 M4A (AAC) 格式以获得最佳兼容性
             'format': 'bestaudio/best',
-            'extractaudio': True,
-            'audioformat': 'm4a',  # 使用 m4a 格式 (兼容性好)
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'm4a',
+                'preferredquality': '192',
+            }],
             # 播放列表处理 - 如果是播放列表，只处理第一个视频
             'playlistend': 1,
             'extract_flat': 'in_playlist',  # 提取播放列表中的单个视频
