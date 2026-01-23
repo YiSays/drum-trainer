@@ -2,6 +2,81 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Recent Changes (2026-01-23)
+
+### Web UI Code Refactoring & Optimization
+
+#### JavaScript Refactoring (app.js)
+- **Massive code reduction**: From ~3,900 lines to 2,131 lines (45% reduction)
+- **Removed deprecated functions**:
+  - `processSelectedFile()` - Deprecated file processing function
+  - `separateYouTubeFile()` - Deprecated YouTube separation function
+  - `changeToClearButton()` - Unused UI state function
+  - `resetProcessButton()` - Unused UI state function
+- **Consolidated duplicated audio logic**:
+  - Unified audio event handlers (play/pause, time update, ended, seek)
+  - Shared playback state management between original files and track-based audio
+  - Centralized UI update functions for track list and now-playing display
+- **Simplified state management**:
+  - Consolidated from dual state (`selectedFile` + `uploadedFile`) to single `uploadedFile`
+  - Reduced state variables from 15+ to essential 8
+  - Improved clarity and reduced bug surface area
+- **Bug fixes**:
+  - **Seek bar dragging during playback**: Fixed by adding proper duration validation and handling both original file and track-based audio seeking
+  - **Play buttons not working when no track selected**: Fixed by checking `state.uploadedFile?.name` instead of `state.selectedFile`
+  - **Seek position lost when selecting tracks**: Fixed by saving `pendingSeekPosition` when no tracks are selected
+  - **Circular dependency in `applySeekIfNeeded()`**: Fixed by prioritizing `pendingSeekPosition` calculation
+- **New helper functions** added for code reuse:
+  - `setupAudioEventListeners()` - Sets up all audio event listeners
+  - `updateAudioDisplay()` - Updates playback time display
+  - `applySeekIfNeeded()` - Handles seek position application
+  - `syncAllAudio()` - Synchronizes multiple audio elements
+  - `clearAudioSync()` - Cleans up sync intervals
+
+#### CSS Refactoring (style.css)
+- **Significant code reduction**: From 2,876 lines to 2,007 lines (30% reduction)
+- **Removed 7 duplicate CSS rules** by consolidating into single definitions:
+  - Multiple `.btn-primary` and `.btn-secondary` declarations
+  - Multiple `.track-item` hover states
+  - Duplicate `.toast` animations
+  - Repeated `.empty-state` styles
+- **Removed deprecated CSS sections**:
+  - "OLD CONTROL STYLES" section (entire section removed)
+  - `.file-preview` styles (no longer used)
+  - `.preview-header`, `.preview-actions`, `.preview-badge` (deprecated)
+  - `.selected-tracks-info` styles (moved to track list only)
+- **Removed unused classes**:
+  - `.track-count-badge` - Not referenced in HTML
+  - `.preview-text` - Deprecated element
+  - `.processing-text` - Deprecated element
+  - `.selected-tracks-info` - Removed from controls card
+- **Fixed broken/incomplete CSS blocks**:
+  - Missing `::before` pseudo-element for `.upload-dropzone.uploaded::before`
+  - Fixed `.track-item` hover background gradient animation
+- **Slider thumb centering fixes**:
+  - Added `margin-top: -5px` to `.seek-slider` thumbs (WebKit & Mozilla)
+  - Added `margin-top: -3px` to `.compact-slider` thumbs (WebKit & Mozilla)
+  - Added missing Mozilla slider styles with hover effects
+- **Layout stabilization**:
+  - Fixed container height at 48px for both track list and play button states
+  - Added `.processing` state indicator for upload panel
+- **Visual improvements**:
+  - Consolidated track type color variables
+  - Added common slider background variable (`--slider-bg`)
+  - Better organized CSS sections with clear headers
+  - Improved code comments and documentation
+
+#### HTML Refactoring (index.html)
+- **Removed redundant `selectedTracksInfo` section** from controls card
+- Selected tracks now displayed only in `now-playing-card` (single source of truth)
+- Cleaner UI without duplicate information
+
+#### New Features & Enhancements
+- **Processing state indicator**: Visual overlay shows "⏳ Processing..." during upload/download operations
+- **Drag-over visual feedback**: File dropzone now highlights with primary color when dragging files over it
+- **Improved slider accessibility**: Added proper ARIA labels and title attributes
+- **Audio sync functionality**: `syncAllAudio()` ensures all audio elements stay synchronized during multi-track playback
+
 ## Recent Changes (2026-01-22)
 
 ### Audio Format Optimization
@@ -371,26 +446,67 @@ After Clear:
   - uploadPanel: Unfolds and becomes enabled (unlocked)
 ```
 
-#### Web UI JavaScript State Variables
+#### Web UI JavaScript State Variables (Refactored)
 ```javascript
 let state = {
-    selectedFile: null,      // Currently selected file info
-    selectedTracks: [],      // Active audio tracks
-    uploadVisible: true,     // Upload panel visibility
-    uploadLocked: false,     // Upload panel lock state
-    apiConnected: false,     // API connection status
+    tracks: [],                    // Available tracks from server
+    selectedTracks: [],            // Active audio tracks for multi-track playback
+    isPlaying: false,              // Playback state
+    isLooping: false,              // Loop toggle state
+    apiConnected: false,           // API connection status
+    uploadVisible: false,          // Upload panel visibility
+    uploadLocked: false,           // Upload panel lock state (prevents changes during processing)
+    audioContext: null,            // Web Audio API context for visualization
+    analyser: null,                // Audio analyser for waveform
+    trackVolumes: {},              // Volume per track (0-100)
+    pendingSeekPosition: null,     // Seek position before playback (0-100%)
+    storedSeekTime: null,          // Actual seek time in seconds for syncing
+    isUploading: false,            // Upload state to prevent mid-upload closure
+    originalFilePosition: 0,       // Position of original file independently of audio element
+    uploadedFile: {                // Unified file state (replaces selectedFile)
+        name: null, path: null, size: null, duration: null,
+        source: null, timestamp: null, isSeparated: false,
+    },
+    processing: false,             // Currently processing (upload/download/separation)
+    processingType: null,          // Type: 'upload' | 'download' | 'separation'
 };
 ```
 
-#### Web UI JavaScript Functions
+#### Web UI JavaScript Functions (Refactored)
+**Core Functions:**
 - `handleFileSelect()` - Upload file immediately to server
 - `uploadFileForPreview()` - Upload and get preview info
-- `processSelectedFile()` - Call separate_by_name to process uploaded file
+- `processUploadedFile()` - Call separate_by_name to process uploaded file (replaces deprecated `processSelectedFile` and `separateYouTubeFile`)
 - `updateAfterSeparation()` - Update UI after separation completes
 - `clearSelection()` - Clear all files and reset UI
 - `loadTracks()` - Load tracks from `storage/uploaded/separated/`
 - `handleYouTubeDownload()` - Download YouTube audio to `storage/uploaded/`
 - `updateTrackListUI()` - Update track list display
+
+**Audio Playback Functions:**
+- `setupAudioEventListeners()` - Sets up all audio event listeners for playback elements
+- `updateAudioDisplay()` - Updates playback time display and seek bar
+- `applySeekIfNeeded()` - Applies pending seek position to audio elements
+- `syncAllAudio()` - Synchronizes multiple audio elements during multi-track playback
+- `clearAudioSync()` - Cleans up sync intervals and event listeners
+- `play()` - Unified play function (handles both original file and track-based playback)
+- `pause()` - Pause playback
+- `stop()` - Stop and reset playback
+- `seek()` - Handle seek bar dragging (supports both original file and track-based audio)
+- `toggleLoop()` - Toggle loop mode
+- `updateVolume()` - Update master volume and track-specific volumes
+- `updateSpeed()` - Update playback speed
+- `playOriginalFile()` - Play uploaded original file
+- `stopOriginalFile()` - Stop original file playback
+
+**UI Update Functions:**
+- `updateApiStatus()` - Update API connection indicator
+- `updateNowPlayingDisplay()` - Update the now-playing card content
+- `updatePlayPauseButton()` - Update play/pause button state
+- `updateSeekDisabled()` - Enable/disable seek bar based on playback state
+- `formatTime()` - Format seconds to MM:SS format
+- `announce()` - Screen reader announcements
+- `showToast()` - Display toast notifications
 
 ## Key Implementation Details
 
