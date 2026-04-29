@@ -186,7 +186,7 @@ const drawEmptyWaveform = () => {
     waveformCtx.font = '14px var(--font-sans)';
     waveformCtx.textAlign = 'center';
     waveformCtx.textBaseline = 'middle';
-    waveformCtx.fillText('等待播放...', width / 2, height / 2);
+    waveformCtx.fillText('Waiting to play...', width / 2, height / 2);
 };
 
 const drawStaticWaveform = () => {
@@ -262,11 +262,11 @@ const startRealtimeVisualization = () => {
     try {
         initAudioContext();
         if (state.audioContext.state === 'suspended') state.audioContext.resume();
-        el.vizMode.textContent = '实时频谱';
+        el.vizMode.textContent = 'Live Spectrum';
         visualizeRealtime();
     } catch (error) {
         console.log('Falling back to simulated visualization:', error);
-        el.vizMode.textContent = '模拟波形';
+        el.vizMode.textContent = 'Simulated Waveform';
         startWaveformAnimation();
     }
 };
@@ -463,7 +463,7 @@ const playTrackImmediately = (track, syncPosition = false) => {
         }
     }).catch(err => {
         console.error(`Error playing ${track.name}:`, err);
-        showToast(`播放失败: ${track.name}`, 'error');
+        showToast(`Playback failed: ${track.name}`, 'error');
         if (audioElement && audioElement.parentNode) audioElement.remove();
         state.selectedTracks = state.selectedTracks.filter(t => t.track.name !== track.name);
     });
@@ -471,11 +471,11 @@ const playTrackImmediately = (track, syncPosition = false) => {
 
 const playOriginalFile = () => {
     if (!state.uploadedFile?.name) {
-        showToast('未找到音频文件', 'error');
+        showToast('Audio file not found', 'error');
         return;
     }
     if (!state.apiConnected) {
-        showToast('API 未连接', 'error');
+        showToast('API not connected', 'error');
         return;
     }
     if (window.originalAudioPlayer && window.originalAudioPlayer.currentTime && !isNaN(window.originalAudioPlayer.currentTime)) {
@@ -505,14 +505,14 @@ const playOriginalFile = () => {
     window.originalAudioPlayer.addEventListener('ended', handleOriginalEnded);
     window.originalAudioPlayer.onerror = (err) => {
         console.error('Play error:', err);
-        showToast('播放失败: ' + (err.message || '未知错误'), 'error');
+        showToast('Playback failed: ' + (err.message || 'Unknown error'), 'error');
     };
     window.originalAudioPlayer.play().then(() => {
         console.log('Playing original file:', state.uploadedFile.name);
-        showToast('🎵 正在播放预览', 'info');
+        showToast('🎵 Playing preview', 'info');
     }).catch(err => {
         console.error('Play error:', err);
-        showToast('播放失败: ' + err.message, 'error');
+        showToast('Playback failed: ' + err.message, 'error');
     });
 };
 
@@ -570,7 +570,7 @@ const startPlayback = (audioElements) => {
     audioElements.forEach(audio => {
         audio.play().catch(err => {
             console.error('Playback error for', audio.dataset.track, ':', err);
-            showToast(`播放失败: ${audio.dataset.track}`, 'error');
+            showToast(`Playback failed: ${audio.dataset.track}`, 'error');
         });
     });
     if (state.selectedTracks.length > 1) startPeriodicSync();
@@ -598,11 +598,11 @@ const play = () => {
         playOriginalFile();
         return;
     } else {
-        showToast('请先选择音轨', 'warning');
+        showToast('Please select a track first', 'warning');
         return;
     }
     if (!state.apiConnected) {
-        showToast('API 未连接', 'error');
+        showToast('API not connected', 'error');
         return;
     }
     if (window.originalAudioPlayer) {
@@ -711,7 +711,7 @@ const play = () => {
         audioElements.push(audioElement);
     });
     state.isPlaying = true;
-    showToast(`🎵 正在播放 ${state.selectedTracks.length} 个音轨`, 'success');
+    showToast(`🎵 Playing ${state.selectedTracks.length} tracks`, 'success');
     updatePlayState();
     startRealtimeVisualization();
 };
@@ -725,7 +725,7 @@ const pause = () => {
     updatePlayState();
     stopRealtimeVisualization();
     stopPeriodicSync();
-    showToast('已暂停', 'info');
+    showToast('Paused', 'info');
 };
 
 const resume = () => {
@@ -796,7 +796,7 @@ const resume = () => {
             updatePlayState();
             startRealtimeVisualization();
             if (state.selectedTracks.length > 1) startPeriodicSync();
-            showToast(`🎵 恢复播放 ${resumedCount} 个音轨`, 'success');
+            showToast(`🎵 Resumed ${resumedCount} tracks`, 'success');
         } else {
             play();
         }
@@ -814,7 +814,7 @@ const stop = () => {
     state.pendingSeekPosition = null;
     state.storedSeekTime = null;
     state.originalFilePosition = 0;
-    showToast('已停止', 'info');
+    showToast('Stopped', 'info');
 };
 
 const seek = () => {
@@ -1049,7 +1049,7 @@ const showTrackSkeletonLoading = (count = 3) => {
 const updateSidebarTitleCount = (count) => {
     if (!el.sidebarTitleCount) return;
     if (count > 0) {
-        el.sidebarTitleCount.textContent = `${count} 分离`;
+        el.sidebarTitleCount.textContent = `${count} stems`;
         el.sidebarTitleCount.classList.remove('hidden');
         el.sidebarTitleCount.classList.add('visible');
     } else {
@@ -1110,7 +1110,7 @@ const addToSelectedTracks = (track, index) => {
             if (state.isPlaying) syncAllAudio();
         }, 100);
     }
-    showToast(`已添加: ${track.name}`, 'success');
+    showToast(`Added: ${track.name}`, 'success');
 };
 
 const removeFromSelectedTracks = (index) => {
@@ -1139,7 +1139,7 @@ const removeFromSelectedTracks = (index) => {
         audioElement.pause();
         audioElement.remove();
     }
-    showToast(`已移除: ${trackToRemove.track.name}`, 'info');
+    showToast(`Removed: ${trackToRemove.track.name}`, 'info');
 };
 
 const renderTrackList = (tracks) => {
@@ -1156,18 +1156,18 @@ const renderTrackList = (tracks) => {
             el.trackList.innerHTML = `
                 <div class="empty-state">
                     <div class="empty-icon">🎵</div>
-                    <h3>原始文件已就绪</h3>
+                    <h3>Original File Ready</h3>
                     <p class="filename">${originalFile.name}</p>
-                    <p class="guide-subtext">💡 <strong>播放完整歌曲</strong> - 点击播放按钮直接播放</p>
-                    <p class="guide-subtext">💡 <strong>分离音轨</strong> - 使用上方"文件预览"中的"开始分离"按钮</p>
+                    <p class="guide-subtext">💡 <strong>Play full song</strong> - Click play to listen</p>
+                    <p class="guide-subtext">💡 <strong>Separate tracks</strong> - Use the "Start Separation" button above</p>
                 </div>
             `;
         } else {
             el.trackList.innerHTML = `
                 <div class="empty-state">
                     <div class="empty-icon">🎵</div>
-                    <h3>等待处理</h3>
-                    <p>上传的文件准备就绪</p>
+                    <h3>Ready to Process</h3>
+                    <p>Uploaded file is ready</p>
                 </div>
             `;
         }
@@ -1194,15 +1194,15 @@ const renderTrackList = (tracks) => {
                 <div class="track-meta">
                     <span>⏱️ ${duration}</span>
                     <span>💾 ${sizeMB} MB</span>
-                    <span>🎵 ${track.channels === 2 ? '立体声' : '单声道'}</span>
+                    <span>🎵 ${track.channels === 2 ? 'Stereo' : 'Mono'}</span>
                     <span> Hz ${track.samplerate}</span>
                 </div>
             </div>
             <div class="track-actions">
-                <button class="btn-glow" data-action="analyze" title="分析">📊</button>
+                <button class="btn-glow" data-action="analyze" title="Analyze">📊</button>
                 <div class="track-volume-container">
                     <input type="range" class="track-volume-slider" min="0" max="100" value="${storedVolume}"
-                           data-track="${track.name}" data-index="${index}" orient="vertical" title="音量">
+                           data-track="${track.name}" data-index="${index}" orient="vertical" title="Volume">
                 </div>
             </div>
         `;
@@ -1213,14 +1213,14 @@ const renderTrackList = (tracks) => {
 
 const analyzeTrack = async (track) => {
     if (!state.apiConnected) {
-        showToast('API 未连接', 'error');
+        showToast('API not connected', 'error');
         return;
     }
-    showToast('正在分析...', 'info');
+    showToast('Analyzing...', 'info');
     try {
         const audioUrl = `${API_BASE_URL}/tracks/audio/${track.name}`;
         const audioResponse = await fetch(audioUrl);
-        if (!audioResponse.ok) throw new Error('无法下载音频文件');
+        if (!audioResponse.ok) throw new Error('Unable to download audio file');
         const audioBlob = await audioResponse.blob();
         const formData = new FormData();
         const audioFile = new File([audioBlob], track.name, { type: 'audio/wav' });
@@ -1241,19 +1241,19 @@ const analyzeTrack = async (track) => {
             el.statKey.textContent = analysis.key;
             el.bpmValue.textContent = analysis.bpm;
             el.bpmBadge.classList.remove('hidden');
-            showToast(`✅ 分析完成: ${analysis.bpm} BPM | ${analysis.style} | ${analysis.mood}`, 'success');
+            showToast(`✅ Analysis complete: ${analysis.bpm} BPM | ${analysis.style} | ${analysis.mood}`, 'success');
         } else {
-            showToast('分析失败', 'error');
+            showToast('Analysis failed', 'error');
         }
     } catch (error) {
         console.error('Analysis error:', error);
-        showToast(`分析失败: ${error.message}`, 'error');
+        showToast(`Analysis failed: ${error.message}`, 'error');
     }
 };
 
 const loadTracks = async (options = {}) => {
     if (!state.apiConnected) {
-        showToast('API 未连接', 'error');
+        showToast('API not connected', 'error');
         showConnectionHelp();
         return;
     }
@@ -1273,16 +1273,16 @@ const loadTracks = async (options = {}) => {
             el.trackList.innerHTML = `
                 <div class="empty-state">
                     <div class="empty-icon">🎵</div>
-                    <h3>暂无音轨</h3>
-                    <p>点击右上角 + 按钮上传音频文件</p>
-                    <p class="guide-subtext">💡 上传后可直接播放，或点击"处理"分离鼓声</p>
+                    <h3>No Tracks</h3>
+                    <p>Click the + button above to upload audio</p>
+                    <p class="guide-subtext">💡 Play directly after upload, or click "Process" to separate drums</p>
                 </div>
             `;
             if (el.uploadPanel) {
                 el.uploadPanel.classList.remove('hidden');
                 if (el.uploadBtn) {
                     el.uploadBtn.disabled = false;
-                    el.uploadBtn.textContent = '+ 上传';
+                    el.uploadBtn.textContent = '+ Upload';
                 }
                 state.uploadVisible = true;
                 state.uploadLocked = false;
@@ -1299,7 +1299,7 @@ const loadTracks = async (options = {}) => {
             state.uploadLocked = true;
             if (el.uploadBtn) {
                 el.uploadBtn.disabled = true;
-                el.uploadBtn.textContent = '已处理';
+                el.uploadBtn.textContent = 'Processed';
             }
         }
         const originalFile = data.find(track => !track.is_separated);
@@ -1311,9 +1311,9 @@ const loadTracks = async (options = {}) => {
             };
         }
         if (options.showAddedMessage) {
-            showToast(`✅ 成功加载 ${data.length} 个音轨`, 'success');
+            showToast(`✅ Loaded ${data.length} tracks`, 'success');
         } else {
-            showToast(`成功加载 ${data.length} 个音轨`, 'success');
+            showToast(`Loaded ${data.length} tracks`, 'success');
         }
         if (state.uploadedFile) {
             updateNowPlayingDisplay();
@@ -1326,14 +1326,14 @@ const loadTracks = async (options = {}) => {
         el.trackList.innerHTML = `
             <div class="empty-state">
                 <div class="empty-icon">❌</div>
-                <h3>加载失败</h3>
+                <h3>Load Failed</h3>
                 <p>${error.message}</p>
-                <button id="retryBtn" class="btn-secondary">重试</button>
+                <button id="retryBtn" class="btn-secondary">Retry</button>
             </div>
         `;
         const retryBtn = document.getElementById('retryBtn');
         if (retryBtn) retryBtn.addEventListener('click', loadTracks);
-        showToast(`加载失败: ${error.message}`, 'error');
+        showToast(`Load failed: ${error.message}`, 'error');
     }
 };
 
@@ -1342,26 +1342,26 @@ const loadTracks = async (options = {}) => {
 const generateSongInfoBar = (fileInfo = null, source = null) => {
     const info = fileInfo || state.uploadedFile;
     if (!info) return '';
-    const extension = info.name.split('.').pop() || '未知格式';
+    const extension = info.name.split('.').pop() || 'Unknown format';
     const truncatedName = info.name.length > 30 ? info.name.substring(0, 30) + '...' : info.name;
     const src = source || info.source || 'upload';
     const sourceBadge = src === 'youtube'
         ? '<span class="song-info-source">YouTube</span>'
-        : '<span class="song-info-source">本地</span>';
+        : '<span class="song-info-source">Local</span>';
     return `
         <div class="song-info-bar">
             <div class="song-info-icon">🎵</div>
             <div class="song-info-details">
                 <div class="song-info-item">
-                    <span class="song-info-label">文件名</span>
+                    <span class="song-info-label">File</span>
                     <span class="song-info-value truncated" title="${info.name}">${truncatedName}</span>
                 </div>
                 <div class="song-info-item">
-                    <span class="song-info-label">时长</span>
+                    <span class="song-info-label">Duration</span>
                     <span class="song-info-value">${formatTime(info.duration)}</span>
                 </div>
                 <div class="song-info-item">
-                    <span class="song-info-label">格式</span>
+                    <span class="song-info-label">Format</span>
                     <span class="file-badge">${extension.toUpperCase()}</span>
                 </div>
                 ${sourceBadge}
@@ -1381,7 +1381,7 @@ const updateNowPlayingDisplay = () => {
         if (state.uploadedFile && state.uploadedFile.name) {
             playOriginalHTML = `
                 <button id="playOriginalBtn" class="btn-primary" style="flex: 1; min-width: 140px; padding: 10px 24px; height: 48px; display: inline-flex; align-items: center; justify-content: center;">
-                    <span class="icon">▶</span> 播放完整歌曲
+                    <span class="icon">▶</span> Play full song
                 </button>
             `;
             if (el.totalTime && state.uploadedFile.duration) {
@@ -1391,7 +1391,7 @@ const updateNowPlayingDisplay = () => {
             playOriginalHTML = `
                 <span class="placeholder-text">
                     <span class="icon">🎵</span>
-                    选择音轨开始播放
+                    Select tracks to play
                 </span>
             `;
         }
@@ -1430,10 +1430,10 @@ const updateNowPlayingDisplay = () => {
 
 const showProcessingInNowPlayingCard = (message, percentage, current, total) => {
     if (!el.nowPlayingContent) return;
-    const displayMessage = message || '正在处理...';
+    const displayMessage = message || 'Processing...';
     const progressWidth = percentage !== undefined ? percentage : 0;
     const details = (current !== undefined && total !== undefined && total > 0)
-        ? `进度: ${current}/${total} (${Math.round((current / total) * 100)}%)`
+        ? `Progress: ${current}/${total} (${Math.round((current / total) * 100)}%)`
         : '';
     let songInfoHTML = '';
     if (state.uploadedFile && state.uploadedFile.name) {
@@ -1455,19 +1455,19 @@ const showProcessingInNowPlayingCard = (message, percentage, current, total) => 
             </div>
         </div>
     `;
-    if (el.nowPlayingHeader) el.nowPlayingHeader.textContent = '⏳ 分离中...';
+    if (el.nowPlayingHeader) el.nowPlayingHeader.textContent = '⏳ Separating...';
 };
 
 const hideProcessingInNowPlayingCard = () => {
     if (!el.nowPlayingContent) return;
-    el.nowPlayingContent.innerHTML = '<div class="placeholder-text">选择音轨开始播放</div>';
-    if (el.nowPlayingHeader) el.nowPlayingHeader.textContent = '🎶 现在播放';
+    el.nowPlayingContent.innerHTML = '<div class="placeholder-text">Select tracks to play</div>';
+    if (el.nowPlayingHeader) el.nowPlayingHeader.textContent = '🎶 Now Playing';
 };
 
 const showPreviewInNowPlayingCard = (fileInfo, showProcessButton = true) => {
     if (!el.nowPlayingContent) return;
     const source = fileInfo.source || 'upload';
-    const buttonText = '开始分离';
+    const buttonText = 'Start Separation';
     const buttonClass = 'btn-primary';
     const processButtonHTML = showProcessButton ? `
         <div style="display: flex; gap: 8px; margin-top: var(--space-md);">
@@ -1478,12 +1478,12 @@ const showPreviewInNowPlayingCard = (fileInfo, showProcessButton = true) => {
         <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
             ${generateSongInfoBar(fileInfo, source)}
             <div style="text-align: center; color: var(--text-muted); font-size: 0.95rem; margin-top: 4px;">
-                🎧 点击下方按钮开始分离处理
+                🎧 Click the button below to start separation
             </div>
             ${processButtonHTML}
         </div>
     `;
-    if (el.nowPlayingHeader) el.nowPlayingHeader.textContent = '🎵 文件预览';
+    if (el.nowPlayingHeader) el.nowPlayingHeader.textContent = '🎵 File Preview';
     const uploadDropzone = document.querySelector('.upload-dropzone');
     if (uploadDropzone) {
         uploadDropzone.classList.remove('uploaded', 'disabled');
@@ -1497,7 +1497,7 @@ const showPreviewInNowPlayingCard = (fileInfo, showProcessButton = true) => {
 
 const clearPreviewFromNowPlayingCard = () => {
     if (!el.nowPlayingContent) return;
-    el.nowPlayingContent.innerHTML = '<div class="placeholder-text">选择音轨开始播放</div>';
+    el.nowPlayingContent.innerHTML = '<div class="placeholder-text">Select tracks to play</div>';
     const uploadDropzone = document.querySelector('.upload-dropzone');
     if (uploadDropzone) uploadDropzone.classList.remove('uploaded', 'disabled');
 };
@@ -1510,11 +1510,11 @@ const clearSelection = async () => {
     if (state.apiConnected) {
         try {
             const response = await fetch(`${API_BASE_URL}/separation/clear`, { method: 'POST' });
-            if (response.ok) showToast('已清除所有上传文件', 'success');
-            else showToast('清除失败', 'error');
+            if (response.ok) showToast('All uploaded files cleared', 'success');
+            else showToast('Clear failed', 'error');
         } catch (error) {
             console.error('Clear error:', error);
-            showToast(`清除失败: ${error.message}`, 'error');
+            showToast(`Clear failed: ${error.message}`, 'error');
         }
     }
     state.selectedTracks.forEach(selected => {
@@ -1532,9 +1532,9 @@ const clearSelection = async () => {
         el.trackList.innerHTML = `
             <div class="empty-state">
                 <div class="empty-icon">🎵</div>
-                <h3>暂无音轨</h3>
-                <p>点击右上角 + 按钮上传音频文件</p>
-                <button id="emptyRefreshBtn" class="btn-secondary">刷新</button>
+                <h3>No Tracks</h3>
+                <p>Click the + button above to upload audio</p>
+                <button id="emptyRefreshBtn" class="btn-secondary">Refresh</button>
             </div>
         `;
         const emptyRefreshBtn = document.getElementById('emptyRefreshBtn');
@@ -1542,7 +1542,7 @@ const clearSelection = async () => {
             emptyRefreshBtn.addEventListener('click', () => {
                 if (state.apiConnected) {
                     loadTracks();
-                    showToast('刷新音轨列表', 'success');
+                    showToast('Track list refreshed', 'success');
                 }
             });
         }
@@ -1552,13 +1552,13 @@ const clearSelection = async () => {
     if (el.totalTime) el.totalTime.textContent = '0:00';
     if (el.seekBar) el.seekBar.value = 0;
     if (el.currentTime) el.currentTime.textContent = '0:00';
-    if (el.nowPlayingContent) el.nowPlayingContent.innerHTML = '<div class="placeholder-text">选择音轨开始播放</div>';
+    if (el.nowPlayingContent) el.nowPlayingContent.innerHTML = '<div class="placeholder-text">Select tracks to play</div>';
     stopRealtimeVisualization();
     if (el.uploadPanel) {
         el.uploadPanel.classList.remove('hidden');
         if (el.uploadBtn) {
             el.uploadBtn.disabled = false;
-            el.uploadBtn.textContent = '+ 上传';
+            el.uploadBtn.textContent = '+ Upload';
         }
         state.uploadVisible = true;
         state.uploadLocked = false;
@@ -1575,7 +1575,7 @@ const clearSelection = async () => {
 
 const uploadFileForPreview = async (file) => {
     if (!state.apiConnected) {
-        showToast('API 未连接', 'error');
+        showToast('API not connected', 'error');
         return;
     }
     if (state.uploadedFile && state.uploadedFile.name) {
@@ -1592,20 +1592,20 @@ const uploadFileForPreview = async (file) => {
     state.isUploading = true;
     if (el.uploadBtn) {
         el.uploadBtn.disabled = true;
-        el.uploadBtn.textContent = '⏳ 上传中';
+        el.uploadBtn.textContent = '⏳ Uploading';
     }
     const formData = new FormData();
     formData.append('file', file);
     const uploadDropzone = document.querySelector('.upload-dropzone');
     if (uploadDropzone) uploadDropzone.classList.add('hidden');
     el.uploadProgress.classList.remove('hidden');
-    updateProgressUI('正在上传...', 20);
+    updateProgressUI('Uploading...', 20);
     try {
         const response = await fetch(`${API_BASE_URL}/upload/preview`, { method: 'POST', body: formData });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const result = await response.json();
         if (result.status === 'success') {
-            updateProgressUI('上传完成', 50);
+            updateProgressUI('Upload complete', 50);
             showFilePreviewFromServer(result.file_info);
             state.uploadedFile = {
                 name: result.file_info.name,
@@ -1616,12 +1616,12 @@ const uploadFileForPreview = async (file) => {
                 timestamp: Date.now(),
                 isSeparated: false,
             };
-            showToast('文件已上传，点击确认处理', 'success');
+            showToast('File uploaded, click to process', 'success');
         }
     } catch (error) {
         console.error('Upload error:', error);
-        showToast(`上传失败: ${error.message}`, 'error');
-        updateProgressUI('上传失败', 0);
+        showToast(`Upload failed: ${error.message}`, 'error');
+        updateProgressUI('Upload failed', 0);
         setTimeout(() => cancelFilePreview(), 2000);
     } finally {
         state.isUploading = false;
@@ -1629,7 +1629,7 @@ const uploadFileForPreview = async (file) => {
         state.processingType = null;
         if (el.uploadBtn) {
             el.uploadBtn.disabled = false;
-            el.uploadBtn.textContent = '+ 上传';
+            el.uploadBtn.textContent = '+ Upload';
         }
     }
 };
@@ -1651,22 +1651,22 @@ const cancelFilePreview = () => {
     if (el.uploadProgress) el.uploadProgress.classList.add('hidden');
     if (el.uploadPanel) el.uploadPanel.classList.remove('processing');
     clearPreviewFromNowPlayingCard();
-    showToast('已取消选择', 'info');
+    showToast('Selection cancelled', 'info');
 };
 
 const processUploadedFile = async () => {
     if (!state.uploadedFile?.name) {
-        showToast('请先上传或下载音频文件', 'warning');
+        showToast('Please upload or download an audio file first', 'warning');
         return;
     }
     if (!state.apiConnected) {
-        showToast('API 未连接', 'error');
+        showToast('API not connected', 'error');
         return;
     }
     try {
         const checkResponse = await fetch(`${API_BASE_URL}/tracks/info/${encodeURIComponent(state.uploadedFile.name)}`);
         if (!checkResponse.ok) {
-            showToast('文件已过期，请重新上传', 'error');
+            showToast('File expired, please re-upload', 'error');
             state.uploadedFile = { name: null, path: null, size: null, duration: null, source: null, timestamp: null, isSeparated: false };
             clearPreviewFromNowPlayingCard();
             return;
@@ -1681,7 +1681,7 @@ const processUploadedFile = async () => {
     formData.append('filename', state.uploadedFile.name);
     if (el.confirmUploadBtn) {
         el.confirmUploadBtn.disabled = true;
-        el.confirmUploadBtn.textContent = '处理中...';
+        el.confirmUploadBtn.textContent = 'Processing...';
         el.confirmUploadBtn.style.opacity = '0.6';
         el.confirmUploadBtn.style.cursor = 'not-allowed';
     }
@@ -1697,7 +1697,7 @@ const processUploadedFile = async () => {
     }
     state.isPlaying = false;
     updatePlayState();
-    showProcessingInNowPlayingCard('准备分离...', 0, 0, 0);
+    showProcessingInNowPlayingCard('Preparing separation...', 0, 0, 0);
     try {
         const response = await fetch(`${API_BASE_URL}/separation/separate_by_name_stream`, {
             method: 'POST',
@@ -1730,7 +1730,7 @@ const processUploadedFile = async () => {
         await processStream();
     } catch (error) {
         console.error('Separation error:', error);
-        showToast(`分离失败: ${error.message}`, 'error');
+        showToast(`Separation failed: ${error.message}`, 'error');
         hideProcessingInNowPlayingCard();
         if (el.uploadPanel) el.uploadPanel.classList.remove('processing');
         const uploadDropzone = document.querySelector('.upload-dropzone');
@@ -1740,7 +1740,7 @@ const processUploadedFile = async () => {
         }
         if (el.confirmUploadBtn) {
             el.confirmUploadBtn.disabled = false;
-            el.confirmUploadBtn.textContent = '处理';
+            el.confirmUploadBtn.textContent = 'Process';
             el.confirmUploadBtn.style.opacity = '1';
             el.confirmUploadBtn.style.cursor = 'pointer';
         }
@@ -1760,11 +1760,11 @@ const handleProgressUpdate = (data) => {
         state.processingType = null;
         updateAfterSeparation().then(() => {
             console.log('Separation completed and UI updated');
-            showToast('✅ 分离完成!', 'success');
+            showToast('✅ Separation complete!', 'success');
         });
     }
     if (stage === 'error' || status === 'error') {
-        showToast(`分离失败: ${data.message}`, 'error');
+        showToast(`Separation failed: ${data.message}`, 'error');
         hideProcessingInNowPlayingCard();
         if (el.uploadPanel) el.uploadPanel.classList.remove('processing');
         const uploadDropzone = document.querySelector('.upload-dropzone');
@@ -1774,7 +1774,7 @@ const handleProgressUpdate = (data) => {
         }
         if (el.confirmUploadBtn) {
             el.confirmUploadBtn.disabled = false;
-            el.confirmUploadBtn.textContent = '处理';
+            el.confirmUploadBtn.textContent = 'Process';
             el.confirmUploadBtn.style.opacity = '1';
             el.confirmUploadBtn.style.cursor = 'pointer';
         }
@@ -1795,46 +1795,46 @@ const updateAfterSeparation = async () => {
                 ${songInfoHTML}
                 <div class="processing-content">
                     <div style="font-size: 1.25rem; font-weight: 700; color: #22c55e; margin-bottom: 12px;">
-                        ✅ 分离完成!
+                        ✅ Separation complete!
                     </div>
                     <div style="font-size: 0.95rem; color: var(--text-secondary);">
-                        分离结果已加载到音轨库
+                        Separated tracks loaded into track library
                     </div>
                 </div>
             </div>
         `;
     }
-    if (el.nowPlayingHeader) el.nowPlayingHeader.textContent = '✅ 完成';
+    if (el.nowPlayingHeader) el.nowPlayingHeader.textContent = '✅ Done';
     await new Promise(resolve => setTimeout(resolve, 1000));
     hideProcessingInNowPlayingCard();
-    if (el.nowPlayingHeader) el.nowPlayingHeader.textContent = '🎶 现在播放';
+    if (el.nowPlayingHeader) el.nowPlayingHeader.textContent = '🎶 Now Playing';
     updateNowPlayingDisplay();
     state.uploadVisible = false;
     el.uploadPanel.classList.add('hidden');
     state.uploadLocked = true;
     if (el.uploadBtn) {
         el.uploadBtn.disabled = true;
-        el.uploadBtn.textContent = '+ 上传';
+        el.uploadBtn.textContent = '+ Upload';
     }
     console.log('Upload panel folded and locked after separation');
 };
 
 const toggleUploadPanel = () => {
     if (state.isUploading) {
-        showToast('上传中，请等待完成', 'warning');
+        showToast('Upload in progress, please wait', 'warning');
         return;
     }
     if (state.uploadLocked && !state.uploadVisible) {
-        showToast('已上传文件，请先清除再上传新文件', 'warning');
+        showToast('File already uploaded, please clear before uploading a new one', 'warning');
         return;
     }
     state.uploadVisible = !state.uploadVisible;
     if (state.uploadVisible) {
         el.uploadPanel.classList.remove('hidden');
-        if (el.uploadBtn) el.uploadBtn.textContent = '✕ 关闭';
+        if (el.uploadBtn) el.uploadBtn.textContent = '✕ Close';
     } else {
         el.uploadPanel.classList.add('hidden');
-        if (el.uploadBtn) el.uploadBtn.textContent = '+ 上传';
+        if (el.uploadBtn) el.uploadBtn.textContent = '+ Upload';
     }
 };
 
@@ -1842,11 +1842,11 @@ const handleFileSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 100 * 1024 * 1024) {
-        showToast('文件太大，最大支持 100MB', 'error');
+        showToast('File too large, maximum 100MB', 'error');
         return;
     }
     if (!file.type.startsWith('audio/')) {
-        showToast('请上传音频文件', 'error');
+        showToast('Please upload an audio file', 'error');
         return;
     }
     uploadFileForPreview(file);
@@ -1856,12 +1856,12 @@ const handleFileSelect = (e) => {
 
 const handleYouTubeDownload = async () => {
     if (!state.apiConnected) {
-        showToast('API 未连接', 'error');
+        showToast('API not connected', 'error');
         return;
     }
     const url = el.youtubeUrl?.value.trim();
     if (!url) {
-        showToast('请输入 YouTube 视频链接', 'warning');
+        showToast('Please enter a YouTube video link', 'warning');
         return;
     }
     if (state.uploadedFile && state.uploadedFile.name) {
@@ -1876,18 +1876,24 @@ const handleYouTubeDownload = async () => {
     state.processing = true;
     state.processingType = 'download';
     el.youtubeProgress?.classList.remove('hidden');
-    updateYouTubeProgressUI('正在下载...', 20);
+    updateYouTubeProgressUI('Downloading...', 20);
     try {
         const response = await fetch(`${API_BASE_URL}/youtube/download`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url, name: el.youtubeName?.value.trim() || undefined }),
+            body: JSON.stringify({ 
+                url: url, 
+                name: el.youtubeName?.value.trim() || null 
+            }),
         });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || `HTTP ${response.status}`);
+        }
         const result = await response.json();
         if (result.status === 'success') {
-            updateYouTubeProgressUI('下载完成!', 100);
-            showToast('✅ 下载成功!', 'success');
+            updateYouTubeProgressUI('Download complete!', 100);
+            showToast('✅ Download successful!', 'success');
             if (el.youtubeUrl) el.youtubeUrl.value = '';
             if (el.youtubeName) el.youtubeName.value = '';
             state.processing = false;
@@ -1895,12 +1901,12 @@ const handleYouTubeDownload = async () => {
             await showYouTubePreview(result.data);
             setTimeout(() => el.youtubeProgress?.classList.add('hidden'), 2000);
         } else {
-            throw new Error(result.message || '下载失败');
+            throw new Error(result.message || 'Download failed');
         }
     } catch (error) {
         console.error('YouTube download error:', error);
-        showToast(`下载失败: ${error.message}`, 'error');
-        updateYouTubeProgressUI('下载失败', 0);
+        showToast(`Download failed: ${error.message}`, 'error');
+        updateYouTubeProgressUI('Download failed', 0);
         setTimeout(() => el.youtubeProgress?.classList.add('hidden'), 2000);
         state.processing = false;
         state.processingType = null;
@@ -1927,8 +1933,8 @@ const showYouTubePreview = async (downloadResult) => {
             <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
                 ${generateSongInfoBar(state.uploadedFile, 'youtube')}
                 <div style="display: flex; gap: 8px; margin-top: 8px;">
-                    <button id="playPreviewBtn" class="btn-secondary" style="flex: 1;">▶ 播放预览</button>
-                    <button id="separateBtn" class="btn-primary" style="flex: 1;">分离处理</button>
+                    <button id="playPreviewBtn" class="btn-secondary" style="flex: 1;">▶ Play Preview</button>
+                    <button id="separateBtn" class="btn-primary" style="flex: 1;">Separate</button>
                 </div>
             </div>
         `;
@@ -1937,7 +1943,7 @@ const showYouTubePreview = async (downloadResult) => {
         const separateBtn = document.getElementById('separateBtn');
         if (separateBtn) separateBtn.addEventListener('click', processUploadedFile);
     }
-    if (el.nowPlayingHeader) el.nowPlayingHeader.textContent = '🎵 YouTube 预览';
+    if (el.nowPlayingHeader) el.nowPlayingHeader.textContent = '🎵 YouTube Preview';
     if (el.totalTime && duration) el.totalTime.textContent = formatTime(duration);
     if (el.currentTime) el.currentTime.textContent = '0:00';
     if (el.seekBar) el.seekBar.value = 0;
@@ -1951,15 +1957,15 @@ const showConnectionHelp = () => {
     el.trackList.innerHTML = `
         <div class="empty-state">
             <div class="empty-icon">⚠️</div>
-            <h3>无法连接到 API</h3>
-            <p>请确保 FastAPI 服务器正在运行</p>
+            <h3>Cannot connect to API</h3>
+            <p>Please ensure the FastAPI server is running</p>
             <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;">
-                在终端运行：<br>
+                Run in terminal:<br>
                 <code style="background: var(--bg-tertiary); padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 4px;">
                     uv run uvicorn api.server:app --host 0.0.0.0 --port 8000
                 </code>
             </p>
-            <button id="retryConnectionBtn" class="btn-primary" style="margin-top: 1rem;">重试连接</button>
+            <button id="retryConnectionBtn" class="btn-primary" style="margin-top: 1rem;">Retry Connection</button>
         </div>
     `;
     const retryBtn = document.getElementById('retryConnectionBtn');
@@ -1971,7 +1977,7 @@ const showConnectionHelp = () => {
 
 const checkApiConnection = async () => {
     console.log('🧪 Starting API connection check...');
-    updateApiStatus('connecting', '连接中...');
+    updateApiStatus('connecting', 'Connecting...');
     const healthUrl = `${API_BASE_URL}/health`;
     console.log('📡 Fetching from:', healthUrl);
     try {
@@ -1984,7 +1990,7 @@ const checkApiConnection = async () => {
         if (response.ok) {
             const data = await response.json();
             state.apiConnected = true;
-            updateApiStatus('connected', `已连接 (${data.device.toUpperCase()})`);
+            updateApiStatus('connected', `Connected (${data.device.toUpperCase()})`);
             enablePlayerControls(true);
             console.log('✅ API Connected:', data);
             return true;
@@ -2005,7 +2011,7 @@ const checkApiConnection = async () => {
         }
     }
     state.apiConnected = false;
-    updateApiStatus('disconnected', '未连接');
+    updateApiStatus('disconnected', 'Disconnected');
     return false;
 };
 
@@ -2013,16 +2019,16 @@ const setupEventListeners = () => {
     if (el.refreshBtn) el.refreshBtn.addEventListener('click', () => {
         if (state.apiConnected) {
             loadTracks();
-            showToast('刷新音轨列表', 'success');
+            showToast('Track list refreshed', 'success');
         } else {
-            showToast('API 未连接', 'error');
+            showToast('API not connected', 'error');
         }
     });
     if (el.clearBtn) el.clearBtn.addEventListener('click', clearSelection);
     if (el.emptyRefreshBtn) el.emptyRefreshBtn.addEventListener('click', () => {
         if (state.apiConnected) {
             loadTracks();
-            showToast('刷新音轨列表', 'success');
+            showToast('Track list refreshed', 'success');
         }
     });
     if (el.uploadBtn) el.uploadBtn.addEventListener('click', toggleUploadPanel);
@@ -2099,7 +2105,7 @@ const setupEventListeners = () => {
         });
         el.audioPlayer.addEventListener('error', (e) => {
             console.error('Audio error:', e);
-            showToast('音频加载失败', 'error');
+            showToast('Audio loading failed', 'error');
         });
     }
 };
@@ -2128,7 +2134,7 @@ const setupKeyboardShortcuts = () => {
             case 'KeyR':
                 if (state.apiConnected) {
                     loadTracks();
-                    showToast('刷新音轨列表', 'success');
+                    showToast('Track list refreshed', 'success');
                 }
                 break;
             case 'KeyU':

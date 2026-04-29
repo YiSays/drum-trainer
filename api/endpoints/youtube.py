@@ -1,9 +1,5 @@
 """
-YouTube 下载和分离端点
-
-支持从 YouTube URL 下载音频并进行鼓声分离
-使用 storage/uploaded/ 作为主目录
-分离结果保存在 storage/uploaded/separated/ 子目录
+YouTube download and separation endpoint
 """
 
 from fastapi import APIRouter, HTTPException, Body, Form
@@ -13,40 +9,31 @@ from typing import Optional, Dict
 import json
 import shutil
 
+from api.config import get_storage_dir
 from core.youtube_downloader import YouTubeDownloader
 from core.separator import DrumSeparator
 from core.audio_io import AudioIO
 
 router = APIRouter(prefix="/youtube", tags=["YouTube"])
 
-# NEW: Upload directory (main storage for uploads)
-UPLOAD_DIR = Path("storage/uploaded")
+UPLOAD_DIR = get_storage_dir() / "uploaded"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
-@router.post("/download", summary="下载 YouTube 音频")
+@router.post("/download", summary="Download YouTube audio")
 async def download_youtube_audio(
-    url: str = Body(..., description="YouTube 视频 URL (支持各种格式，包括带播放列表参数的 URL)"),
-    name: Optional[str] = Body(None, description="输出文件名 (可选)")
+    url: str = Body(..., description="YouTube video URL (supports various formats including URLs with playlist parameters)"),
+    name: Optional[str] = Body(None, description="Output filename (optional)")
 ):
     """
-    从 YouTube 下载音频并保存到 storage/uploaded/
+    Download audio from YouTube and save to storage/uploaded/
 
-    **支持的 URL 格式**:
-    - 标准 URL: https://www.youtube.com/watch?v=VIDEO_ID
-    - 复杂 URL: https://www.youtube.com/watch?v=VIDEO_ID&list=PLAYLIST_ID&start_radio=1&pp=...
-    - 短 URL: https://youtu.be/VIDEO_ID
-    - 嵌入 URL: https://www.youtube.com/embed/VIDEO_ID
-    - 纯视频 ID: VIDEO_ID
-
-    注意: 系统会自动提取视频 ID 并忽略播放列表、推荐等额外参数
-
-    Args:
-        url: YouTube 视频 URL
-        name: 输出文件名 (不含扩展名)
-
-    Returns:
-        下载信息和文件路径
+    **Supported URL formats**:
+    - Standard: https://www.youtube.com/watch?v=VIDEO_ID
+    - Complex: https://www.youtube.com/watch?v=VIDEO_ID&list=PLAYLIST_ID&start_radio=1&pp=...
+    - Short: https://youtu.be/VIDEO_ID
+    - Embed: https://www.youtube.com/embed/VIDEO_ID
+    - Video ID only: VIDEO_ID
     """
     try:
         downloader = YouTubeDownloader(UPLOAD_DIR)
@@ -54,63 +41,43 @@ async def download_youtube_audio(
 
         return {
             "status": "success",
-            "message": "音频下载成功",
+            "message": "Audio downloaded successfully",
             "data": result
         }
 
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
-        raise HTTPException(500, f"下载失败: {str(e)}")
+        raise HTTPException(500, f"Download failed: {str(e)}")
 
 
-@router.post("/separate", summary="下载并分离 YouTube 音频")
+@router.post("/separate", summary="Download and separate YouTube audio")
 async def separate_youtube_audio(
-    url: str = Body(..., description="YouTube 视频 URL (支持各种格式，包括带播放列表参数的 URL)"),
-    name: Optional[str] = Body(None, description="输出文件名 (可选)"),
-    chunk_size: int = Body(30, description="音频分段处理时长 (秒)"),
-    model: str = Body("htdemucs_6s", description="分离模型: htdemucs_6s (6声道) 或 htdemucs (4声道)")
+    url: str = Body(..., description="YouTube video URL"),
+    name: Optional[str] = Body(None, description="Output filename (optional)"),
+    chunk_size: int = Body(30, description="Audio chunk duration in seconds"),
+    model: str = Body("htdemucs_6s", description="Separation model: htdemucs_6s (6-stem) or htdemucs (4-stem)")
 ):
     """
-    从 YouTube 下载音频并进行鼓声分离 (完整流程)
+    Download audio from YouTube and perform drum separation.
 
-    **支持的 URL 标准**:
-    - 标准 URL: https://www.youtube.com/watch?v=VIDEO_ID
-    - 复杂 URL: https://www.youtube.com/watch?v=VIDEO_ID&list=PLAYLIST_ID&start_radio=1&pp=...
-    - 短 URL: https://youtu.be/VIDEO_ID
-    - 嵌入 URL: https://www.youtube.com/embed/VIDEO_ID
-    - 纯视频 ID: VIDEO_ID
+    **Processing pipeline**:
+    1. Download audio to storage/uploaded/
+    2. Copy file to storage/uploaded/separated/temp.mp3 for separation
+    3. Save separated tracks to storage/uploaded/separated/
 
-    注意: 系统会自动提取视频 ID 并忽略播放列表、推荐等额外参数
-
-    **处理流程**:
-    1. 下载音频到 storage/uploaded/
-    2. 复制文件到 storage/uploaded/separated/temp.mp3 进行分离
-    3. 分离结果保存在 storage/uploaded/separated/ 目录
-
-    **模型选择**:
-    - `htdemucs_6s`: 6声道分离 (drums, bass, guitar, piano, other, vocals) - **推荐**
-    - `htdemucs`: 4声道分离 (drums, bass, other, vocals)
-
-    Args:
-        url: YouTube 视频 URL
-        name: 输出文件名 (不含扩展名)
-        chunk_size: 音频分段处理时长 (秒)
-        model: 分离模型
-
-    Returns:
-        下载信息、分离结果和文件路径
+    **Model options**:
+    - `htdemucs_6s`: 6-stem separation (drums, bass, guitar, piano, other, vocals)
+    - `htdemucs`: 4-stem separation (drums, bass, other, vocals)
     """
     try:
-        # 步骤 1: 下载音频到 storage/uploaded/
-        print(f"步骤 1: 下载 YouTube 音频")
+        print("Step 1: Downloading YouTube audio")
         downloader = YouTubeDownloader(UPLOAD_DIR)
         download_result = downloader.download_audio(url, name)
 
         audio_path = Path(download_result["file_path"])
 
-        # 步骤 2: Create separated directory and COPY file (keep original for playback)
-        print(f"步骤 2: 复制文件进行处理（保留原文件）")
+        print("Step 2: Copying file for processing (keeping original)")
         separated_dir = UPLOAD_DIR / "separated"
         separated_dir.mkdir(parents=True, exist_ok=True)
 
@@ -118,52 +85,45 @@ async def separate_youtube_audio(
         shutil.copy2(str(audio_path), str(temp_file))
 
         try:
-            # 步骤 3: 分离鼓声
-            print(f"步骤 3: 分离鼓声 (chunk_size={chunk_size}s)")
+            print(f"Step 3: Separating drums (chunk_size={chunk_size}s)")
             separator = DrumSeparator(model_name=model)
 
-            # 检查音频时长，如果超过 chunk_size 则会自动分段处理
             audio_io = AudioIO()
             audio_info = audio_io.get_audio_info(temp_file)
             duration = audio_info["duration"]
 
             if duration > chunk_size:
-                print(f"音频较长 ({duration}s)，将分段处理...")
+                print(f"Long audio ({duration}s), will process in chunks...")
 
-            # 执行分离 - 保存到 separated_dir
             separator.separate(
                 audio_path=temp_file,
                 output_dir=separated_dir,
                 chunk_size=chunk_size
             )
 
-            # 步骤 4: 收集分离结果
-            print(f"步骤 4: 收集分离结果")
+            print("Step 4: Collecting separated results")
             separated_files = {}
             for file in separated_dir.glob("*.wav"):
-                key = file.stem  # e.g., "drum", "no_drums", "bass", etc.
+                key = file.stem
                 separated_files[key] = str(file.relative_to(UPLOAD_DIR.parent))
 
-            # 步骤 5: 清理 temp.mp3
             temp_file.unlink(missing_ok=True)
 
-            # 构建完整响应
             result = {
                 "status": "success",
-                "message": "YouTube 音频下载并分离成功",
+                "message": "YouTube audio downloaded and separated successfully",
                 "original": download_result,
                 "separated": separated_files,
                 "processing_time": audio_info.get("duration", 0),
             }
 
-            print(f"✅ 完整处理完成")
-            print(f"   原始音频: {audio_path}")
-            print(f"   分离结果: {separated_dir}")
+            print("✅ Full processing complete")
+            print(f"   Original: {audio_path}")
+            print(f"   Separated: {separated_dir}")
 
             return result
 
         except Exception as e:
-            # Cleanup on error
             if temp_file.exists():
                 temp_file.unlink()
             shutil.rmtree(separated_dir, ignore_errors=True)
@@ -172,24 +132,18 @@ async def separate_youtube_audio(
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
-        raise HTTPException(500, f"处理失败: {str(e)}")
+        raise HTTPException(500, f"Processing failed: {str(e)}")
 
 
-@router.get("/list", summary="列出 storage/uploaded/ 中的文件")
+@router.get("/list", summary="List uploaded files")
 async def list_uploaded_files():
-    """
-    列出 storage/uploaded/ 目录中的文件
-
-    Returns:
-        文件列表
-    """
+    """List files in storage/uploaded/"""
     supported_extensions = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".webm"}
     files = []
 
     if UPLOAD_DIR.exists():
         for file_path in UPLOAD_DIR.iterdir():
             if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
-                # Skip temp files
                 if file_path.name == "temp.mp3":
                     continue
 

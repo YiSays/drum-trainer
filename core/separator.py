@@ -28,7 +28,7 @@ class DrumSeparator:
     """使用 Demucs 的鼓声分离器"""
 
     def __init__(self, model_name: str = "htdemucs", device: Optional[str] = None,
-                 model_cache_dir: str | Path = "storage/models"):
+                 model_cache_dir: str | Path | None = None):
         """
         初始化分离器
 
@@ -45,7 +45,10 @@ class DrumSeparator:
         self.audio_io = AudioIO()
         self.model = None
 
-        # 设置模型缓存路径到 storage/models
+        # 设置模型缓存路径
+        if model_cache_dir is None:
+            from api.config import get_storage_dir
+            model_cache_dir = get_storage_dir() / "models"
         cache_path = Path(model_cache_dir).resolve()
         cache_path.mkdir(parents=True, exist_ok=True)
         os.environ['TORCH_HOME'] = str(cache_path)
@@ -136,8 +139,8 @@ class DrumSeparator:
 
         # 加载音频
         if progress_callback:
-            progress_callback("loading", 0, 1, "加载音频文件...")
-        print("📂 加载音频文件...")
+            progress_callback("loading", 0, 1, "Loading audio file...")
+        print("📂 Loading audio file...")
         audio, sr = self.audio_io.load_audio(audio_path)
         duration = self.audio_io.get_duration(audio, sr)
 
@@ -148,7 +151,7 @@ class DrumSeparator:
         all_results = []
 
         num_chunks = len(slices)
-        print(f"🔪 分离处理: {num_chunks}个片段")
+        print(f"🔪 Separating: {num_chunks} chunks")
 
         for i, (start, end) in enumerate(tqdm(slices, desc="分离进度")):
             chunk = audio[:, start:end]
@@ -157,11 +160,11 @@ class DrumSeparator:
 
             # Report chunk progress
             if progress_callback:
-                progress_callback("chunk", i + 1, num_chunks, f"处理片段 {i + 1}/{num_chunks}")
+                progress_callback("chunk", i + 1, num_chunks, f"Processing chunk {i + 1}/{num_chunks}")
 
         # 合并结果
         if progress_callback:
-            progress_callback("merging", 0, 7, "合并片段...")
+            progress_callback("merging", 0, 7, "Merging chunks...")
         print("🔄 合并片段...")
         final_results = self._merge_results(
             all_results, output_dir, sr,
@@ -247,36 +250,35 @@ class DrumSeparator:
 
         # 合并每个声部
         if progress_callback:
-            progress_callback("merging", 1, total_merge_steps, "合并 drums...")
-        drums = np.concatenate([r["drums"] for r in results], axis=-1)
+            progress_callback("merging", 1, total_merge_steps, "Merging drums...")        drums = np.concatenate([r["drums"] for r in results], axis=-1)
 
         if progress_callback:
-            progress_callback("merging", 2, total_merge_steps, "合并 bass...")
+            progress_callback("merging", 2, total_merge_steps, "Merging bass...")
         bass = np.concatenate([r["bass"] for r in results], axis=-1)
 
         if is_6_source:
             if progress_callback:
-                progress_callback("merging", 3, total_merge_steps, "合并 piano...")
+                progress_callback("merging", 3, total_merge_steps, "Merging piano...")
             piano = np.concatenate([r["piano"] for r in results], axis=-1)
 
             if progress_callback:
-                progress_callback("merging", 4, total_merge_steps, "合并 guitar...")
+                progress_callback("merging", 4, total_merge_steps, "Merging guitar...")
             guitar = np.concatenate([r["guitar"] for r in results], axis=-1)
 
             if progress_callback:
-                progress_callback("merging", 5, total_merge_steps, "合并 other...")
+                progress_callback("merging", 5, total_merge_steps, "Merging other...")
             other = np.concatenate([r["other"] for r in results], axis=-1)
 
             if progress_callback:
-                progress_callback("merging", 6, total_merge_steps, "合并 vocals...")
+                progress_callback("merging", 6, total_merge_steps, "Merging vocals...")
             vocals = np.concatenate([r["vocals"] for r in results], axis=-1)
         else:
             if progress_callback:
-                progress_callback("merging", 3, total_merge_steps, "合并 other...")
+                progress_callback("merging", 3, total_merge_steps, "Merging other...")
             other = np.concatenate([r["other"] for r in results], axis=-1)
 
             if progress_callback:
-                progress_callback("merging", 4, total_merge_steps, "合并 vocals...")
+                progress_callback("merging", 4, total_merge_steps, "Merging vocals...")
             vocals = np.concatenate([r["vocals"] for r in results], axis=-1)
 
         # 不再需要计算 original, no_drums, no_vocals
@@ -295,7 +297,7 @@ class DrumSeparator:
         # 保存各声部（统一使用WAV格式以确保兼容性）
         def save_with_progress(name: str, audio_data: np.ndarray, file_path: Path, current: int):
             if progress_callback:
-                progress_callback("saving", current, total_merge_steps, f"保存 {name}...")
+                progress_callback("saving", current, total_merge_steps, f"Saving {name}...")
             self.audio_io.save_audio(audio_data, file_path, sr)
             return file_path
 

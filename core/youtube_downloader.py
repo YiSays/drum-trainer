@@ -19,13 +19,16 @@ class YouTubeDownloader:
     支持 Apple Silicon 优化 (自动使用内置优化)
     """
 
-    def __init__(self, output_dir: str | Path = "storage/youtube"):
+    def __init__(self, output_dir: str | Path | None = None):
         """
         初始化下载器
 
         Args:
             output_dir: 下载文件的保存目录
         """
+        if output_dir is None:
+            from api.config import get_storage_dir
+            output_dir = get_storage_dir() / "youtube"
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -136,8 +139,12 @@ class YouTubeDownloader:
             'ignoreerrors': False,
             'quiet': False,
             'no_warnings': False,
-            # 禁用聚合器/处理器
-            'extractor_args': {},
+            # 尝试绕过 403 的配置 - 使用 Android 客户端
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'web'],
+                }
+            },
         }
 
         try:
@@ -266,7 +273,17 @@ class YouTubeDownloader:
         if embed_match:
             return embed_match.group(1)
 
-        # 模式 4: 只有视频 ID 本身
+        # 模式 4: youtube.com/shorts/VIDEO_ID
+        shorts_match = re.search(r'youtube\.com/shorts/([a-zA-Z0-9_-]+)', url, re.IGNORECASE)
+        if shorts_match:
+            return shorts_match.group(1)
+
+        # 模式 5: youtube.com/live/VIDEO_ID
+        live_match = re.search(r'youtube\.com/live/([a-zA-Z0-9_-]+)', url, re.IGNORECASE)
+        if live_match:
+            return live_match.group(1)
+
+        # 模式 6: 只有视频 ID 本身
         if re.match(r'^[a-zA-Z0-9_-]{11}$', url):
             return url
 
@@ -299,7 +316,7 @@ class YouTubeDownloader:
 
 def download_audio_from_youtube(
     url: str,
-    output_dir: str | Path = "storage/youtube",
+    output_dir: str | Path | None = None,
     output_name: Optional[str] = None,
     normalize: bool = True
 ) -> Dict[str, any]:

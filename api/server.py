@@ -1,7 +1,7 @@
 """
-FastAPI 主服务器
+FastAPI Main Server
 
-智能鼓声分离与音乐理解服务
+Smart Drum Separation & Music Analysis Service
 """
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
@@ -13,33 +13,34 @@ import shutil
 import asyncio
 from datetime import datetime, timedelta
 
-# 导入端点
-from api.endpoints import separation, analysis, generation, tracks, youtube
+# Import endpoints
+from api.endpoints import separation, analysis, generation, tracks, youtube, transcription, demo, transcription_ast, transcription_torch
 from api.models import HealthResponse
+from api.config import get_storage_dir
 
 # Upload directory configuration
-UPLOAD_DIR = Path("storage/uploaded")
+UPLOAD_DIR = get_storage_dir() / "uploaded"
 SEPARATED_DIR = UPLOAD_DIR / "separated"
 
 # Cleanup configuration
 CLEANUP_AGE_HOURS = 24  # Files older than this will be cleaned up on startup
 
-# 创建应用
+# Create application
 app = FastAPI(
-    title="🥁 智能鼓声分离与音乐理解 API",
+    title="🥁 Smart Drum Separation & Music Analysis API",
     description="""
-    基于AI的音乐分析与鼓演奏生成服务
+    AI-powered Music Analysis & Drum Performance Generation Service
 
-    **核心功能**:
-    - 🎵 鼓声分离 (Demucs AI)
-    - 📊 音乐理解 (风格/BPM/结构/节奏)
-    - 🥁 智能生成 (纯自动鼓演奏)
-    - 🔄 完整处理 (一站式API)
+    **Core Features**:
+    - 🎵 Drum Separation (Demucs AI)
+    - 📊 Music Analysis (Style/BPM/Structure/Rhythm)
+    - 🥁 Smart Generation (Fully Automatic Drum Performance)
+    - 🔄 Full Pipeline (One-stop API)
 
-    **优化**:
-    - Apple Silicon (Metal加速)
-    - uv依赖管理
-    - 跨平台支持
+    **Optimizations**:
+    - Apple Silicon (Metal Acceleration)
+    - uv Dependency Management
+    - Cross-platform Support
     """,
     version="0.1.0",
     contact={
@@ -48,21 +49,25 @@ app = FastAPI(
     }
 )
 
-# CORS 中间件
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 生产环境应限制具体域名
+    allow_origins=["*"],  # In production, restrict to specific domains
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 注册端点
+# Register endpoints
 app.include_router(separation.router)
 app.include_router(analysis.router)
 app.include_router(generation.router)
 app.include_router(tracks.router)
 app.include_router(youtube.router)
+app.include_router(transcription.router)
+app.include_router(transcription_ast.router)
+app.include_router(transcription_torch.router)
+app.include_router(demo.router)
 
 
 # ============================================
@@ -173,30 +178,30 @@ async def startup_event():
     print("=" * 60)
 
 
-@app.get("/cleanup", summary="手动清理旧文件", response_model=dict)
+@app.get("/cleanup", summary="Manual cleanup of old files", response_model=dict)
 async def manual_cleanup(max_age_hours: int = 24):
     """
-    手动触发清理旧文件（保留最近N小时的文件）
+    Manually trigger cleanup of old files (keeps files from the last N hours)
 
     Args:
-        max_age_hours: 保留多少小时内的文件，默认24小时
+        max_age_hours: How many hours of files to keep, default 24 hours
     """
     stats = cleanup_old_uploads(max_age_hours)
     return {
         "status": "success",
-        "message": f"清理完成",
+        "message": "Cleanup complete",
         **stats
     }
 
 
-@app.get("/", summary="根路径", response_model=HealthResponse)
+@app.get("/", summary="Root endpoint", response_model=HealthResponse)
 async def root():
     """
-    API 服务状态检查
+    API service status check
     """
     device = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
 
-    # 检查核心库是否可用
+    # Check if core libraries are available
     try:
         import demucs
         model_loaded = True
@@ -213,30 +218,30 @@ async def root():
     }
 
 
-@app.get("/health", summary="健康检查", response_model=HealthResponse)
+@app.get("/health", summary="Health check", response_model=HealthResponse)
 async def health():
-    """服务健康状态"""
+    """Service health status"""
     return await root()
 
 
-@app.get("/download/{file_path:path}", summary="下载文件")
+@app.get("/download/{file_path:path}", summary="Download file")
 async def download_file(file_path: str):
     """
-    下载处理后的文件
+    Download processed files
 
     Args:
-        file_path: 文件路径（相对于storage目录）
+        file_path: File path (relative to storage directory)
     """
-    base_path = Path("storage")
+    base_path = get_storage_dir()
     full_path = base_path / file_path
 
-    # 安全检查：防止路径遍历攻击
+    # Security check: prevent path traversal attacks
     full_path = full_path.resolve()
     if not str(full_path).startswith(str(base_path.resolve())):
-        raise HTTPException(403, "不允许访问此路径")
+        raise HTTPException(403, "Access denied for this path")
 
     if not full_path.exists():
-        raise HTTPException(404, "文件不存在")
+        raise HTTPException(404, "File not found")
 
     return FileResponse(
         path=full_path,
@@ -245,15 +250,15 @@ async def download_file(file_path: str):
     )
 
 
-@app.post("/test/analyze", summary="测试端点")
+@app.post("/test/analyze", summary="Test endpoint")
 async def test_analyze(file: UploadFile = File(...)):
-    """快速测试分析功能"""
+    """Quick test for analysis functionality"""
     from core.music_analyzer import MusicAnalyzer
     from core.audio_io import AudioIO
     import tempfile
     import shutil
 
-    temp_dir = Path("storage/temp")
+    temp_dir = get_storage_dir() / "temp"
     temp_dir.mkdir(parents=True, exist_ok=True)
 
     temp_file = temp_dir / f"test_{file.filename}"
@@ -272,21 +277,21 @@ async def test_analyze(file: UploadFile = File(...)):
         raise HTTPException(500, str(e))
 
 
-@app.post("/upload/preview", summary="上传文件用于预览")
+@app.post("/upload/preview", summary="Upload file for preview")
 async def upload_preview(file: UploadFile = File(...)):
     """
-    上传文件到 storage/uploaded/ 并返回文件信息用于预览
+    Upload file to storage/uploaded/ and return file info for preview
 
-    用于前端：用户上传文件后显示预览信息，然后点击处理
+    Used by frontend: user uploads file for preview, then clicks to process
     """
     from core.audio_io import AudioIO
     from fastapi import Form
 
-    UPLOAD_DIR = Path("storage/uploaded")
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    upload_dir = get_storage_dir() / "uploaded"
+    upload_dir.mkdir(parents=True, exist_ok=True)
 
-    # 保存文件
-    saved_path = UPLOAD_DIR / file.filename
+    # Save file
+    saved_path = upload_dir / file.filename
     try:
         with open(saved_path, "wb") as buffer:
             import shutil
@@ -294,17 +299,17 @@ async def upload_preview(file: UploadFile = File(...)):
     finally:
         file.file.close()
 
-    # 获取文件信息
+    # Get file info
     try:
         audio_io = AudioIO()
         info = audio_io.get_audio_info(saved_path)
 
         return {
             "status": "success",
-            "message": "文件上传成功",
+            "message": "File uploaded successfully",
             "file_info": {
                 "name": file.filename,
-                "path": str(saved_path.relative_to(UPLOAD_DIR.parent)),
+                "path": str(saved_path.relative_to(upload_dir.parent)),
                 "size": saved_path.stat().st_size,
                 "duration": info["duration"],
                 "samplerate": info["samplerate"],
@@ -316,12 +321,12 @@ async def upload_preview(file: UploadFile = File(...)):
         # Cleanup on error
         if saved_path.exists():
             saved_path.unlink()
-        raise HTTPException(500, f"无法读取文件信息: {str(e)}")
+        raise HTTPException(500, f"Unable to read file info: {str(e)}")
 
 
-@app.get("/info", summary="系统信息")
+@app.get("/info", summary="System information")
 async def info():
-    """获取系统信息"""
+    """Get system information"""
     info = {
         "torch_version": torch.__version__,
         "device": "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu"),
@@ -331,7 +336,7 @@ async def info():
         "default_model": "htdemucs",
         "available_models": ["htdemucs", "htdemucs_ft", "htdemucs_6s"],
         "shifts": 1,
-        "model_cache_dir": "storage/models",
+        "model_cache_dir": str(get_storage_dir() / "models"),
     }
     return info
 
@@ -397,32 +402,117 @@ async def serve_ui_js():
         )
 
 
+@app.get("/ui/test_bench.html", response_class=HTMLResponse, include_in_schema=False)
+async def serve_test_bench_html():
+    """Serve Test Bench UI page"""
+    path = WEB_UI_DIR / "test_bench.html"
+    if not path.exists():
+        raise HTTPException(404, "Test Bench UI not found")
+
+    with open(path, "r", encoding="utf-8") as f:
+        return HTMLResponse(
+            content=f.read(),
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            }
+        )
+
+
+@app.get("/ui/js/test_bench.js", response_class=HTMLResponse, include_in_schema=False)
+async def serve_test_bench_js():
+    """Serve Test Bench JavaScript file"""
+    path = WEB_UI_DIR / "js" / "test_bench.js"
+    if not path.exists():
+        raise HTTPException(404, "Test Bench JS not found")
+
+    with open(path, "r", encoding="utf-8") as f:
+        return HTMLResponse(
+            content=f.read(),
+            media_type="application/javascript",
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            }
+        )
+
+
+@app.get("/ui/test_bench_v2.html", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/web_ui/test_bench_v2.html", response_class=HTMLResponse, include_in_schema=False)
+async def serve_test_bench_v2_html():
+    """Serve Test Bench v2 UI page"""
+    path = WEB_UI_DIR / "test_bench_v2.html"
+    if not path.exists():
+        raise HTTPException(404, "Test Bench v2 UI not found")
+
+    with open(path, "r", encoding="utf-8") as f:
+        return HTMLResponse(
+            content=f.read(),
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            }
+        )
+
+
+@app.get("/ui/js/test_bench_v2.js", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/web_ui/js/test_bench_v2.js", response_class=HTMLResponse, include_in_schema=False)
+async def serve_test_bench_v2_js():
+    """Serve Test Bench v2 JavaScript file"""
+    path = WEB_UI_DIR / "js" / "test_bench_v2.js"
+    if not path.exists():
+        raise HTTPException(404, "Test Bench v2 JS not found")
+
+    with open(path, "r", encoding="utf-8") as f:
+        return HTMLResponse(
+            content=f.read(),
+            media_type="application/javascript",
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            }
+        )
+
+
+@app.get("/ui/test_bench_v3.html", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/test", response_class=HTMLResponse, include_in_schema=False)
+async def serve_test_bench_v3_html():
+    """Serve Test Bench v3 (Enhanced Pipeline) UI page"""
+    path = WEB_UI_DIR / "test_bench_v3.html"
+    if not path.exists():
+        raise HTTPException(404, "Test Bench v3 UI not found")
+
+    with open(path, "r", encoding="utf-8") as f:
+        return HTMLResponse(
+            content=f.read(),
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            }
+        )
+
+
 if __name__ == "__main__":
     import uvicorn
 
-    print("🚀 启动 Drum Trainer API 服务...")
+    print("🚀 Starting Drum Trainer API service...")
     print("=" * 60)
     print("")
-    print("📊 系统信息:")
+    print("📊 System Information:")
     print(f"  - PyTorch: {torch.__version__}")
 
     if torch.backends.mps.is_available():
-        print("  - 设备: Apple Silicon (Metal加速) ✅")
+        print("  - Device: Apple Silicon (Metal Acceleration) ✅")
     elif torch.cuda.is_available():
-        print("  - 设备: CUDA GPU ✅")
+        print("  - Device: CUDA GPU ✅")
     else:
-        print("  - 设备: CPU (性能较慢)")
+        print("  - Device: CPU (slower performance)")
 
-    print(f"  - 默认模型: htdemucs (4声道)")
-    print(f"  - 存储目录: storage/uploaded/")
+    print("  - Default model: htdemucs (4-stem)")
+    print("  - Storage directory: storage/uploaded/")
     print("")
-    print("🔗 API 地址: http://localhost:8000")
-    print("📄 文档: http://localhost:8000/docs")
+    print("🔗 API URL: http://localhost:8000")
+    print("📄 Docs: http://localhost:8000/docs")
     print("📝 ReDoc: http://localhost:8000/redoc")
     print("🖥️  Web UI: http://localhost:8000/ui")
     print("")
-    print("🧹 清理: 老文件(>24小时)将在启动时自动清理")
-    print("      手动清理: GET /cleanup?max_age_hours=N")
+    print("🧹 Cleanup: Old files (>24 hours) will be automatically cleaned on startup")
+    print("      Manual cleanup: GET /cleanup?max_age_hours=N")
     print("")
     print("=" * 60)
 

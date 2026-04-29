@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -22,7 +22,7 @@
             <div class="nav-actions">
                 <div id="apiStatus" class="status-badge connecting">
                     <span class="status-dot"></span>
-                    <span class="status-text">连接中...</span>
+                    <span class="status-text">Connecting...</span>
                 </div>
             </div>
         </nav>
@@ -33,17 +33,17 @@
             <aside class="sidebar">
                 <div class="sidebar-header">
                     <h2 class="sidebar-title">
-                        <span id="sidebarTitleText">🎵 音轨库</span>
+                        <span id="sidebarTitleText">🎵 Track Library</span>
                         <span id="sidebarTitleCount" class="title-count hidden"></span>
                     </h2>
                     <div class="sidebar-actions">
-                        <button id="refreshBtn" class="btn-glow" title="刷新音轨列表 (R)">
+                        <button id="refreshBtn" class="btn-glow" title="Refresh track list (R)">
                             <span>⟳</span>
                         </button>
-                        <button id="clearBtn" class="btn-glow" title="清除所有音轨选择 (C)">
+                        <button id="clearBtn" class="btn-glow" title="Clear all track selections (C)">
                             <span>✕</span>
                         </button>
-                        <button id="uploadBtn" class="btn-glow primary" title="上传新音轨 (U)">
+                        <button id="uploadBtn" class="btn-glow primary" title="Upload new track (U)">
                             <span>+</span>
                         </button>
                     </div>
@@ -53,15 +53,15 @@
                 <div id="uploadPanel" class="upload-panel" role="region" aria-label="File upload">
                     <div class="upload-dropzone" role="button" tabindex="0" aria-label="Drop audio file here or click to select">
                         <div class="drop-icon">📁</div>
-                        <h3>拖放音频文件到这里</h3>
-                        <p class="drop-subtitle">或点击选择文件</p>
+                        <h3>Drop audio file here</h3>
+                        <p class="drop-subtitle">or click to select</p>
                         <input type="file" id="fileInput" accept="audio/mp3,audio/wav,audio/flac,audio/ogg,audio/m4a,audio/webm,audio/*" class="file-input-hidden" aria-label="Select audio file">
-                        <button id="selectFileBtn" class="btn-primary" aria-label="Choose file">选择文件</button>
-                        <div class="upload-hint">支持: MP3, WAV, FLAC, OGG, M4A (最大 100MB)</div>
+                        <button id="selectFileBtn" class="btn-primary" aria-label="Choose file">Choose File</button>
+                        <div class="upload-hint">Supported: MP3, WAV, FLAC, OGG, M4A (max 100MB)</div>
 
                         <div id="uploadProgress" class="upload-progress hidden">
                             <div class="progress-header">
-                                <span id="progressText">准备上传...</span>
+                                <span id="progressText">Preparing upload...</span>
                                 <span id="progressPercent">0%</span>
                             </div>
                             <div class="progress-bar-container">
@@ -74,12 +74,12 @@
                         <!-- Process Card (shown after upload, replaces file preview in uploadPanel) -->
                         <div id="processCard" class="file-preview hidden">
                             <div class="preview-header">
-                                <h4>🎵 文件已就绪</h4>
-                                <span class="preview-badge">待处理</span>
+                                <h4>🎵 File Ready</h4>
+                                <span class="preview-badge">Pending</span>
                             </div>
                             <div class="preview-actions">
-                                <button id="cancelUploadBtn" class="btn-secondary">取消</button>
-                                <button id="confirmUploadBtn" class="btn-primary">处理</button>
+                                <button id="cancelUploadBtn" class="btn-secondary">Cancel</button>
+                                <button id="confirmUploadBtn" class="btn-primary">Process</button>
                             </div>
                         </div>
 
@@ -89,13 +89,13 @@
 
                     <!-- YouTube Download Section -->
                     <div class="youtube-section">
-                        <h4 class="section-title">🎵 下载 YouTube 音频</h4>
-                        <input type="url" id="youtubeUrl" class="youtube-input" placeholder="粘贴 YouTube 视频链接...">
-                        <input type="text" id="youtubeName" class="youtube-input" placeholder="输出文件名 (可选)...">
-                        <button id="downloadYoutubeBtn" class="btn-primary">下载音频</button>
+                        <h4 class="section-title">🎵 Download YouTube Audio</h4>
+                        <input type="url" id="youtubeUrl" class="youtube-input" placeholder="Paste YouTube video URL...">
+                        <input type="text" id="youtubeName" class="youtube-input" placeholder="Output filename (optional)...">
+                        <button id="downloadYoutubeBtn" class="btn-primary">Download Audio</button>
                         <div id="youtubeProgress" class="upload-progress hidden">
                             <div class="progress-header">
-                                <span id="youtubeProgressText">准备下载...</span>
+                                <span id="youtubeProgressText">Preparing download...</span>
                                 <span id="youtubeProgressPercent">0%</span>
                             </div>
                             <div class="progress-bar-container">
@@ -111,12 +111,12 @@
                 <div id="guideCard" class="guide-card hidden">
                     <div class="guide-header">
                         <span class="guide-icon">💡</span>
-                        <strong>使用指南</strong>
+                        <strong>Quick Guide</strong>
                     </div>
                     <div class="guide-content">
-                        <p>• <strong>选择音轨</strong> → 点击音轨卡片选中/取消</p>
-                        <p>• <strong>播放选中音轨</strong> → 播放按钮播放混合音轨</p>
-                        <p>• <strong>播放完整歌曲</strong> → 不选音轨，直接播放</p>
+                        <p>• <strong>Select tracks</strong> → Click track cards to select/deselect</p>
+                        <p>• <strong>Play selected</strong> → Play button mixes selected tracks</p>
+                        <p>• <strong>Play full song</strong> → Deselect all, then play</p>
                     </div>
                 </div>
 
@@ -125,9 +125,9 @@
                     <div id="trackList" class="track-list">
                         <div class="empty-state">
                             <div class="empty-icon">🎵</div>
-                            <h3>暂无音轨</h3>
-                            <p>点击右上角 + 按钮上传音频文件</p>
-                            <button id="emptyRefreshBtn" class="btn-secondary">刷新</button>
+                            <h3>No Tracks</h3>
+                            <p>Click the + button above to upload audio</p>
+                            <button id="emptyRefreshBtn" class="btn-secondary">Refresh</button>
                         </div>
                     </div>
                 </div>
@@ -138,7 +138,7 @@
                 <!-- Now Playing Card (simplified - single unified content area) -->
                 <div class="card now-playing-card">
                     <div class="card-header">
-                        <h3 id="nowPlayingHeader" role="status" aria-live="polite">🎶 现在播放</h3>
+                        <h3 id="nowPlayingHeader" role="status" aria-live="polite">🎶 Now Playing</h3>
                         <div id="bpmBadge" class="bpm-badge hidden" role="status" aria-label="BPM indicator">
                             <span class="bpm-value">--</span>
                             <span class="bpm-label">BPM</span>
@@ -147,7 +147,7 @@
                     <div class="card-body">
                         <div id="nowPlayingContent" role="region" aria-label="Now playing content">
                             <!-- Dynamic content loaded here -->
-                            <div class="placeholder-text">选择音轨开始播放</div>
+                            <div class="placeholder-text">Select a track to start playing</div>
                         </div>
                     </div>
                 </div>
@@ -155,9 +155,9 @@
                 <!-- Waveform Visualization -->
                 <div class="card waveform-card">
                     <div class="card-header">
-                        <h3>📈 音频可视化</h3>
+                        <h3>📈 Audio Visualization</h3>
                         <div class="viz-controls">
-                            <span id="vizMode" class="viz-mode">实时频谱</span>
+                            <span id="vizMode" class="viz-mode">Live Spectrum</span>
                         </div>
                     </div>
                     <div class="card-body">
@@ -174,7 +174,7 @@
                         <div class="seek-section">
                             <span id="currentTime" class="time-text">0:00</span>
                             <div class="seek-bar-container">
-                                <input type="range" id="seekBar" class="seek-slider" value="0" min="0" max="100" disabled aria-label="Seek position" title="拖动跳转">
+                                <input type="range" id="seekBar" class="seek-slider" value="0" min="0" max="100" disabled aria-label="Seek position" title="Drag to seek">
                             </div>
                             <span id="totalTime" class="time-text">0:00</span>
                         </div>
@@ -183,8 +183,8 @@
                         <div class="controls-row">
                             <!-- Left: Volume -->
                             <div class="control-group volume-control">
-                                <div class="icon-label" title="音量">🔊</div>
-                                <input type="range" id="volumeSlider" class="compact-slider" value="80" min="0" max="100" aria-label="Master volume" title="音量">
+                                <div class="icon-label" title="Volume">🔊</div>
+                                <input type="range" id="volumeSlider" class="compact-slider" value="80" min="0" max="100" aria-label="Master volume" title="Volume">
                                 <span id="volumeValue" class="value-text">80%</span>
                             </div>
 
@@ -193,26 +193,26 @@
                                 <!-- Loop Toggle -->
                                 <div class="loop-wrapper">
                                     <input type="checkbox" id="loopCheckbox" class="hidden-checkbox">
-                                    <label for="loopCheckbox" class="btn-icon-toggle" title="循环播放 (L)">
+                                    <label for="loopCheckbox" class="btn-icon-toggle" title="Loop (L)">
                                         <span class="icon">🔁</span>
                                     </label>
                                 </div>
 
                                 <!-- Stop -->
-                                <button id="stopBtn" class="btn-icon-round secondary" disabled aria-label="Stop playback" title="停止 (ESC)">
+                                <button id="stopBtn" class="btn-icon-round secondary" disabled aria-label="Stop playback" title="Stop (ESC)">
                                     <span class="icon">⏹</span>
                                 </button>
 
                                 <!-- Play/Pause -->
-                                <button id="playPauseBtn" class="btn-icon-round primary big" disabled aria-label="Play/Pause toggle" title="播放/暂停 (空格)">
+                                <button id="playPauseBtn" class="btn-icon-round primary big" disabled aria-label="Play/Pause toggle" title="Play/Pause (Space)">
                                     <span class="icon" id="playPauseIcon">▶</span>
                                 </button>
                             </div>
 
                             <!-- Right: Speed -->
                             <div class="control-group speed-control">
-                                <div class="icon-label" title="速度">⚡</div>
-                                <input type="range" id="speedSlider" class="compact-slider" value="100" min="50" max="200" step="10" aria-label="Playback speed" title="速度">
+                                <div class="icon-label" title="Speed">⚡</div>
+                                <input type="range" id="speedSlider" class="compact-slider" value="100" min="50" max="200" step="10" aria-label="Playback speed" title="Speed">
                                 <span id="speedValue" class="value-text">1.0x</span>
                             </div>
                         </div>
@@ -222,7 +222,7 @@
                 <!-- Analysis Results -->
                 <div class="card analysis-card hidden" id="analysisCard">
                     <div class="card-header">
-                        <h3>📊 音乐分析</h3>
+                        <h3>📊 Music Analysis</h3>
                     </div>
                     <div class="card-body">
                         <div class="analysis-grid">
@@ -231,19 +231,19 @@
                                 <span id="statBpm" class="stat-value">--</span>
                             </div>
                             <div class="stat-box">
-                                <span class="stat-label">风格</span>
+                                <span class="stat-label">Style</span>
                                 <span id="statStyle" class="stat-value">--</span>
                             </div>
                             <div class="stat-box">
-                                <span class="stat-label">情绪</span>
+                                <span class="stat-label">Mood</span>
                                 <span id="statMood" class="stat-value">--</span>
                             </div>
                             <div class="stat-box">
-                                <span class="stat-label">能量</span>
+                                <span class="stat-label">Energy</span>
                                 <span id="statEnergy" class="stat-value">--</span>
                             </div>
                             <div class="stat-box">
-                                <span class="stat-label">调性</span>
+                                <span class="stat-label">Key</span>
                                 <span id="statKey" class="stat-value">--</span>
                             </div>
                         </div>
@@ -259,11 +259,11 @@
                     🥁 Drum Trainer v1.0 - Professional Drum Practice Tool
                 </div>
                 <div class="shortcuts">
-                    <span class="shortcut">Space: 播放/暂停</span>
-                    <span class="shortcut">←/→: 快进/快退</span>
-                    <span class="shortcut">R: 刷新</span>
-                    <span class="shortcut">U: 上传</span>
-                    <span class="shortcut">ESC: 停止</span>
+                    <span class="shortcut">Space: Play/Pause</span>
+                    <span class="shortcut">←/→: Rewind/Forward</span>
+                    <span class="shortcut">R: Refresh</span>
+                    <span class="shortcut">U: Upload</span>
+                    <span class="shortcut">ESC: Stop</span>
                 </div>
             </div>
         </footer>

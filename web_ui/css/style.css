@@ -362,7 +362,7 @@ body {
 }
 
 .upload-panel.processing::after {
-    content: '⏳ 处理中...';
+    content: '⏳ Processing...';
     position: absolute;
     top: 50%;
     left: 50%;
@@ -1199,6 +1199,100 @@ body {
     background: var(--bg-tertiary);
     padding: var(--space-xs) var(--space-md);
     border-radius: var(--radius-full);
+}
+
+/* ============================================
+   Drum Notation
+   ============================================ */
+
+.notation-card {
+    background: linear-gradient(135deg, var(--bg-card), var(--bg-tertiary));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(20px);
+}
+
+.notation-controls {
+    display: flex;
+    gap: var(--space-sm);
+}
+
+.notation-info {
+    display: flex;
+    gap: var(--space-md);
+    margin-bottom: var(--space-md);
+    flex-wrap: wrap;
+}
+
+.notation-stat {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-md);
+    font-family: var(--font-mono);
+}
+
+.notation-display {
+    background: var(--bg-primary);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: var(--space-sm);
+}
+
+#notationCanvas {
+    width: 100%;
+    height: 200px;
+    display: block;
+}
+
+.notation-legend {
+    display: flex;
+    gap: var(--space-md);
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+
+.note-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.note-indicator.kick {
+    background: #ef4444;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+}
+
+.note-indicator.snare {
+    background: #3b82f6;
+    box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+}
+
+.note-indicator.hihat {
+    background: #22c55e;
+    box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+}
+
+.note-indicator.cymbal {
+    background: #f59e0b;
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
+}
+
+.note-indicator.tom {
+    background: #8b5cf6;
+    box-shadow: 0 0 8px rgba(139, 92, 246, 0.5);
 }
 
 /* ============================================

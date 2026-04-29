@@ -1,8 +1,8 @@
 """
-Tracks 端点 - 用于 Flutter Web App 的文件浏览和音频播放
+Tracks Endpoint - File browsing and audio playback for Flutter Web App
 
-使用 storage/uploaded/ 作为主目录
-分离结果保存在 storage/uploaded/separated/ 子目录
+Uses storage/uploaded/ as the main directory
+Separation results are saved in storage/uploaded/separated/ subdirectory
 """
 
 from fastapi import APIRouter, HTTPException
@@ -12,32 +12,33 @@ from typing import List, Optional
 import soundfile as sf
 
 from core.audio_io import AudioIO
+from api.config import get_storage_dir
 
 router = APIRouter(prefix="/tracks", tags=["Tracks"])
 
 # Upload directory (main storage for uploads)
-UPLOAD_DIR = Path("storage/uploaded")
+UPLOAD_DIR = get_storage_dir() / "uploaded"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # Demo directory (for demo tracks - ignored in current implementation)
-DEMO_DIR = Path("storage/demo")
+DEMO_DIR = get_storage_dir() / "demo"
 
 
-@router.get("/list", summary="列出所有音轨", response_model=List[dict])
+@router.get("/list", summary="List all tracks", response_model=List[dict])
 async def list_tracks():
     """
-    列出 storage/uploaded/ 目录中的文件
-    包括: 原始文件 (storage/uploaded/) 和分离文件 (storage/uploaded/separated/)
+    List files in storage/uploaded/ directory
+    Includes: original files (storage/uploaded/) and separated files (storage/uploaded/separated/)
 
-    **分离输出 (htdemucs 模型)**:
-    - drums.wav - 鼓声
-    - bass.wav - 贝斯
-    - other.wav - 其他乐器
-    - vocals.wav - 人声
+    **Separation Output (htdemucs model)**:
+    - drums.wav - Drums
+    - bass.wav - Bass
+    - other.wav - Other instruments
+    - vocals.wav - Vocals
     """
     from fastapi.responses import JSONResponse
     audio_io = AudioIO()
-    supported_extensions = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".webm"}
+    supported_extensions = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".webm", ".mid", ".midi"}
 
     files = []
 
@@ -67,21 +68,41 @@ async def list_tracks():
     # Then, check for separated files in storage/uploaded/separated/
     separated_dir = UPLOAD_DIR / "separated"
     if separated_dir.exists():
-        for file_path in separated_dir.glob("*.wav"):
-            try:
-                info = audio_io.get_audio_info(file_path)
+        for file_path in separated_dir.glob("*"):
+            if not file_path.is_file():
+                continue
+            if file_path.suffix.lower() not in supported_extensions:
+                continue
 
-                files.append({
-                    "name": file_path.name,
-                    "path": str(file_path.relative_to(UPLOAD_DIR.parent)),
-                    "size": file_path.stat().st_size,
-                    "duration": info["duration"],
-                    "samplerate": info["samplerate"],
-                    "channels": info["channels"],
-                    "extension": file_path.suffix[1:],
-                    "source": "uploaded",
-                    "is_separated": True,  # This is a separated track
-                })
+            try:
+                # MIDI files don't have audio info, skip getting info for them
+                if file_path.suffix.lower() in [".mid", ".midi"]:
+                    files.append({
+                        "name": file_path.name,
+                        "path": str(file_path.relative_to(UPLOAD_DIR.parent)),
+                        "size": file_path.stat().st_size,
+                        "duration": 0,
+                        "samplerate": 0,
+                        "channels": 0,
+                        "extension": file_path.suffix[1:],
+                        "source": "uploaded",
+                        "is_separated": True,
+                        "is_midi": True,  # Mark as MIDI file
+                    })
+                else:
+                    info = audio_io.get_audio_info(file_path)
+                    files.append({
+                        "name": file_path.name,
+                        "path": str(file_path.relative_to(UPLOAD_DIR.parent)),
+                        "size": file_path.stat().st_size,
+                        "duration": info["duration"],
+                        "samplerate": info["samplerate"],
+                        "channels": info["channels"],
+                        "extension": file_path.suffix[1:],
+                        "source": "uploaded",
+                        "is_separated": True,
+                        "is_midi": False,
+                    })
             except Exception:
                 continue
 
@@ -96,14 +117,14 @@ async def list_tracks():
     )
 
 
-@router.get("/status", summary="检查上传状态")
+@router.get("/status", summary="Check upload status")
 async def get_upload_status():
     """
-    检查 uploaded/ 目录状态
+    Check uploaded/ directory status
 
     Returns:
-        - has_uploaded: 是否有文件在 uploaded/ (原始文件)
-        - has_separated: 是否有分离结果在 separated/ 文件夹
+        - has_uploaded: Whether there are files in uploaded/ (original files)
+        - has_separated: Whether there are separation results in separated/ folder
     """
     upload_dir = UPLOAD_DIR
     separated_dir = UPLOAD_DIR / "separated"
@@ -132,16 +153,16 @@ async def get_upload_status():
     }
 
 
-@router.get("/audio/{filename}", summary="获取音频文件")
+@router.get("/audio/{filename}", summary="Get audio file")
 async def get_audio_file(filename: str):
     """
-    获取音频文件用于播放
+    Get audio file for playback
 
     Args:
-        filename: 音频文件名 (e.g., "drum.wav")
+        filename: Audio file name (e.g., "drum.wav")
 
     Returns:
-        音频文件流
+        Audio file stream
     """
     # Search order:
     # 1. storage/uploaded/separated/ (separated tracks)
@@ -167,9 +188,9 @@ async def get_audio_file(filename: str):
                 break
 
         if not allowed_path:
-            raise HTTPException(403, "不允许访问此路径")
+            raise HTTPException(403, "Access denied for this path")
     except Exception:
-        raise HTTPException(403, "路径解析错误")
+        raise HTTPException(403, "Path resolution error")
 
     # If not found in separated/, try uploaded/ directory
     if not file_path.exists():
@@ -180,9 +201,9 @@ async def get_audio_file(filename: str):
             file_path = file_path.resolve()
             uploaded_dir_resolved = uploaded_dir.resolve()
             if not str(file_path).startswith(str(uploaded_dir_resolved)):
-                raise HTTPException(403, "不允许访问此路径")
+                raise HTTPException(403, "Access denied for this path")
         except Exception:
-            raise HTTPException(403, "路径解析错误")
+            raise HTTPException(403, "Path resolution error")
 
     # If not found in uploaded/, try demo directory
     if not file_path.exists():
@@ -193,17 +214,17 @@ async def get_audio_file(filename: str):
             file_path = file_path.resolve()
             demo_dir = DEMO_DIR.resolve()
             if not str(file_path).startswith(str(demo_dir)):
-                raise HTTPException(403, "不允许访问此路径")
+                raise HTTPException(403, "Access denied for this path")
         except Exception:
-            raise HTTPException(403, "路径解析错误")
+            raise HTTPException(403, "Path resolution error")
 
     if not file_path.exists():
-        raise HTTPException(404, f"文件不存在: {filename}")
+        raise HTTPException(404, f"File not found: {filename}")
 
     if not file_path.is_file():
-        raise HTTPException(400, "不是文件")
+        raise HTTPException(400, "Not a file")
 
-    # 根据扩展名设置媒体类型
+    # Set media type based on extension
     ext = file_path.suffix.lower()
     media_type = {
         ".wav": "audio/wav",
@@ -212,30 +233,35 @@ async def get_audio_file(filename: str):
         ".flac": "audio/flac",
         ".ogg": "audio/ogg",
         ".webm": "audio/webm",
+        ".mid": "audio/midi",
+        ".midi": "audio/midi",
     }.get(ext, "application/octet-stream")
+
+    # For MIDI files, use attachment to trigger browser download
+    content_disposition = "attachment" if ext in [".mid", ".midi"] else "inline"
 
     return FileResponse(
         path=file_path,
         filename=file_path.name,
         media_type=media_type,
-        # 启用范围请求（支持seek）和内联播放
+        # Enable range requests (support seek) and inline playback
         headers={
             "Accept-Ranges": "bytes",
-            "Content-Disposition": "inline",  # Allow browser to play audio inline
+            "Content-Disposition": content_disposition,  # MIDI: attachment, Audio: inline
         }
     )
 
 
-@router.get("/info/{filename}", summary="获取音频文件信息")
+@router.get("/info/{filename}", summary="Get audio file info")
 async def get_audio_info(filename: str):
     """
-    获取单个音频文件的详细信息
+    Get detailed information for a single audio file
 
     Args:
-        filename: 音频文件名
+        filename: Audio file name
 
     Returns:
-        文件信息
+        File information
     """
     # Search order:
     # 1. storage/uploaded/separated/ (separated tracks)
@@ -261,9 +287,9 @@ async def get_audio_info(filename: str):
                 break
 
         if not allowed_path:
-            raise HTTPException(403, "不允许访问此路径")
+            raise HTTPException(403, "Access denied for this path")
     except Exception:
-        raise HTTPException(403, "路径解析错误")
+        raise HTTPException(403, "Path resolution error")
 
     # If not found in separated/, try uploaded/ directory
     if not file_path.exists():
@@ -274,9 +300,9 @@ async def get_audio_info(filename: str):
             file_path = file_path.resolve()
             uploaded_dir_resolved = uploaded_dir.resolve()
             if not str(file_path).startswith(str(uploaded_dir_resolved)):
-                raise HTTPException(403, "不允许访问此路径")
+                raise HTTPException(403, "Access denied for this path")
         except Exception:
-            raise HTTPException(403, "路径解析错误")
+            raise HTTPException(403, "Path resolution error")
 
     # If not found in uploaded/, try demo directory
     if not file_path.exists():
@@ -287,12 +313,12 @@ async def get_audio_info(filename: str):
             file_path = file_path.resolve()
             demo_dir = DEMO_DIR.resolve()
             if not str(file_path).startswith(str(demo_dir)):
-                raise HTTPException(403, "不允许访问此路径")
+                raise HTTPException(403, "Access denied for this path")
         except Exception:
-            raise HTTPException(403, "路径解析错误")
+            raise HTTPException(403, "Path resolution error")
 
     if not file_path.exists():
-        raise HTTPException(404, f"文件不存在: {filename}")
+        raise HTTPException(404, f"File not found: {filename}")
 
     try:
         audio_io = AudioIO()
@@ -313,19 +339,19 @@ async def get_audio_info(filename: str):
         }
 
     except Exception as e:
-        raise HTTPException(500, f"无法读取文件信息: {str(e)}")
+        raise HTTPException(500, f"Unable to read file info: {str(e)}")
 
 
-@router.get("/audio/original/{filename}", summary="获取原始音频文件")
+@router.get("/audio/original/{filename}", summary="Get original audio file")
 async def get_original_audio(filename: str):
     """
-    从 storage/uploaded/ 获取原始音频文件（用于播放预览）
+    Get original audio file from storage/uploaded/ (for playback preview)
 
     Args:
-        filename: 音频文件名
+        filename: Audio file name
 
     Returns:
-        原始音频文件流
+        Original audio file stream
     """
     file_path = UPLOAD_DIR / filename
 
@@ -334,17 +360,17 @@ async def get_original_audio(filename: str):
         file_path = file_path.resolve()
         upload_dir_resolved = UPLOAD_DIR.resolve()
         if not str(file_path).startswith(str(upload_dir_resolved)):
-            raise HTTPException(403, "不允许访问此路径")
+            raise HTTPException(403, "Access denied for this path")
     except Exception:
-        raise HTTPException(403, "路径解析错误")
+        raise HTTPException(403, "Path resolution error")
 
     if not file_path.exists():
-        raise HTTPException(404, f"文件不存在: {filename}")
+        raise HTTPException(404, f"File not found: {filename}")
 
     if not file_path.is_file():
-        raise HTTPException(400, "不是文件")
+        raise HTTPException(400, "Not a file")
 
-    # 根据扩展名设置媒体类型
+    # Set media type based on extension
     ext = file_path.suffix.lower()
     media_type = {
         ".wav": "audio/wav",
@@ -353,15 +379,20 @@ async def get_original_audio(filename: str):
         ".flac": "audio/flac",
         ".ogg": "audio/ogg",
         ".webm": "audio/webm",
+        ".mid": "audio/midi",
+        ".midi": "audio/midi",
     }.get(ext, "application/octet-stream")
+
+    # For MIDI files, use attachment to trigger browser download
+    content_disposition = "attachment" if ext in [".mid", ".midi"] else "inline"
 
     return FileResponse(
         path=file_path,
         filename=file_path.name,
         media_type=media_type,
-        # 启用范围请求（支持seek）和内联播放
+        # Enable range requests (support seek) and inline playback
         headers={
             "Accept-Ranges": "bytes",
-            "Content-Disposition": "inline",  # Allow browser to play audio inline
+            "Content-Disposition": content_disposition,  # MIDI: attachment, Audio: inline
         }
     )
