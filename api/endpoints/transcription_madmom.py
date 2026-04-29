@@ -6,8 +6,6 @@ import torchaudio
 import librosa
 from collections import Counter
 
-from core.models.madmom_adapter import MadmomTranscriber
-from core.models.adt import DrumTranscriber # Re-use classification logic
 from api.models import TranscriptionResponse, TranscriptionResult, HitModel
 from api.config import get_storage_dir
 
@@ -32,6 +30,7 @@ async def transcribe_madmom(
         
     try:
         # 1. Initialize Madmom
+        from core.models.madmom_adapter import MadmomTranscriber
         adapter = MadmomTranscriber()
         
         # 2. Detect Onsets using Madmom CNN (Very accurate)

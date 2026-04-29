@@ -6,7 +6,6 @@ import torchaudio
 import librosa
 from collections import Counter
 
-from core.models.adt import DrumTranscriber
 from api.models import TranscriptionResponse, TranscriptionResult, HitModel
 from api.config import get_storage_dir
 from core.rhythm_detector import RhythmDetector # Use strictly for BPM/Pattern analysis post-detection
@@ -24,6 +23,7 @@ _device = None
 def get_model():
     global _model, _device
     if _model is None:
+        from core.models.adt import DrumTranscriber
         # Detect device
         if torch.backends.mps.is_available():
             _device = torch.device("mps")
