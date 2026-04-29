@@ -250,7 +250,8 @@ class DrumSeparator:
 
         # 合并每个声部
         if progress_callback:
-            progress_callback("merging", 1, total_merge_steps, "Merging drums...")        drums = np.concatenate([r["drums"] for r in results], axis=-1)
+            progress_callback("merging", 1, total_merge_steps, "Merging drums...")
+        drums = np.concatenate([r["drums"] for r in results], axis=-1)
 
         if progress_callback:
             progress_callback("merging", 2, total_merge_steps, "Merging bass...")
