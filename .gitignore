@@ -1,4 +1,4 @@
-# Python-generated files
+# Python
 __pycache__/
 *.py[oc]
 build/
@@ -10,21 +10,8 @@ wheels/
 .venv
 .env
 
-# uv
-.venv
-
-# PyTorch model cache
-*.pkl
-*.pth
-*.pt
-
-# Storage
-storage/temp/*
-storage/generated/*
-storage/models/*
-!storage/temp/.gitkeep
-!storage/generated/.gitkeep
-!storage/models/.gitkeep
+# Claude
+.claude/
 
 # IDE
 .vscode/
@@ -45,29 +32,29 @@ logs/
 *.tmp
 *.temp
 
-# Test output - 仅保留核心测试音频
-test_output/analysis_report.json
-test_output/generated_drums.json
-test_output/original_*.wav
-test_output/rhythm_info.json
-test_output/generated_drums.wav
+# PyTorch model cache
+*.pkl
+*.pth
+*.pt
 
-# Separation test dirs - 仅保留 separation_180hz
-separation_original/
-separation_250hz/
-separation_test/
-diagnosis_output/
+# Storage (all runtime data - nothing to commit here)
+storage/
 
-# Obsolete test scripts
-diagnose_drums.py
-verify_fix.py
-test_fix.py
-test_full_workflow.py
-test_install.py
-test_real_audio.py
-test_simple.py
+# Test output
+test_output/
 
-# Obsolete documentation
+# Obsolete Flutter web app
+web/
+
+# Obsolete drum_trainer package (deleted)
+drum_trainer/
+
+# Obsolete docs/summaries
+CLAUDE.md
+FLUTTER_WEB_SUMMARY.md
+IMPLEMENTATION_SUMMARY.md
+SOLUTION_SUMMARY.md
+QUICKSTART.md
 FIX_SUMMARY.md
 PLAN_SUMMARY.md
 PROJECT_SUMMARY.md
@@ -75,8 +62,16 @@ RESEARCH_NOTES.md
 STATUS_SUMMARY.md
 START_HERE.md
 
-# Upload directory - runtime data
-storage/uploaded/*
-!storage/uploaded/.gitkeep
-storage/uploaded/separated/*
-!storage/uploaded/separated/.gitkeep
+# Obsolete test scripts
+test_*.py
+diagnose_*.py
+verify_*.py
+
+# Separation test dirs
+separation_original/
+separation_250hz/
+separation_test/
+diagnosis_output/
+
+# Datasets (too large for git)
+datasets/
