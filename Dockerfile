@@ -13,7 +13,6 @@ WORKDIR /app
 COPY pyproject.toml uv.lock README.md .
 COPY api/ api/
 COPY core/ core/
-COPY models/ models/
 COPY web_ui/ web_ui/
 
 RUN uv sync --no-dev --frozen
