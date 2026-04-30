@@ -11,7 +11,7 @@ wheels/
 .env
 
 # uv
-uv.lock
+.venv
 
 # PyTorch model cache
 *.pkl
