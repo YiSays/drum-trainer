@@ -4,7 +4,7 @@ Uses storage/uploaded/ as the main directory
 Separation results are stored in storage/uploaded/separated/ subdirectory
 """
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Response
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Response, Request
 from fastapi.responses import StreamingResponse
 from pathlib import Path
 import shutil
@@ -16,6 +16,7 @@ import queue
 from core.separator import DrumSeparator
 from core.audio_io import AudioIO
 from api.config import get_storage_dir
+from api.rate_limiter import separation_limit
 
 router = APIRouter(prefix="/separation", tags=["Separation"])
 
@@ -25,11 +26,18 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @router.post("/separate", summary="Separate drums")
+@separation_limit
 async def separate_drums(
+    request: Request,
     file: UploadFile = File(..., description="Audio file (mp3, wav, flac)"),
-    chunk_duration: float = Form(30.0, description="Chunk processing duration (seconds) to avoid memory overflow"),
-    model: str = Form("htdemucs", description="Separation model: htdemucs (4-stem) or htdemucs_ft (fine-tuned 4-stem) or htdemucs_6s (6-stem)"),
-    shifts: int = Form(1, description="Number of time-shift augmentations")
+    chunk_duration: float = Form(
+        30.0, description="Chunk processing duration (seconds) to avoid memory overflow"
+    ),
+    model: str = Form(
+        "htdemucs",
+        description="Separation model: htdemucs (4-stem) or htdemucs_ft (fine-tuned 4-stem) or htdemucs_6s (6-stem)",
+    ),
+    shifts: int = Form(1, description="Number of time-shift augmentations"),
 ):
     """
     Separate drum parts from audio
@@ -72,7 +80,9 @@ async def separate_drums(
     try:
         # Step 3: Run separation - save results to separated_dir
         separator = DrumSeparator(model_name=model)
-        results = separator.separate(temp_file, separated_dir, chunk_duration=chunk_duration, shifts=shifts)
+        results = separator.separate(
+            temp_file, separated_dir, chunk_duration=chunk_duration, shifts=shifts
+        )
 
         processing_time = time.time() - start_time
 
@@ -85,7 +95,7 @@ async def separate_drums(
             "processing_time": round(processing_time, 2),
             "output_dir": str(separated_dir),
             "files": results,
-            "note": "Files are saved on the server and can be downloaded via links"
+            "note": "Files are saved on the server and can be downloaded via links",
         }
 
     except Exception as e:
@@ -97,9 +107,11 @@ async def separate_drums(
 
 
 @router.post("/preview", summary="Quick preview")
+@separation_limit
 async def preview_separation(
+    request: Request,
     file: UploadFile = File(...),
-    shifts: int = Form(1, description="Number of time-shift augmentations")
+    shifts: int = Form(1, description="Number of time-shift augmentations"),
 ):
     """
     Quick preview of separation results (files are not saved)
@@ -126,7 +138,7 @@ async def preview_separation(
         return {
             "status": "success",
             "preview": durations,
-            "note": "Preview based on the first 30 seconds"
+            "note": "Preview based on the first 30 seconds",
         }
 
     except Exception as e:
@@ -154,11 +166,18 @@ async def clear_uploaded():
 
 
 @router.post("/separate_by_name", summary="Separate uploaded file")
+@separation_limit
 async def separate_by_name(
+    request: Request,
     filename: str = Form(..., description="File name to separate"),
-    chunk_duration: float = Form(30.0, description="Chunk processing duration (seconds)"),
-    model: str = Form("htdemucs", description="Separation model: htdemucs (4-stem) or htdemucs_ft (fine-tuned 4-stem) or htdemucs_6s (6-stem)"),
-    shifts: int = Form(1, description="Number of time-shift augmentations")
+    chunk_duration: float = Form(
+        30.0, description="Chunk processing duration (seconds)"
+    ),
+    model: str = Form(
+        "htdemucs",
+        description="Separation model: htdemucs (4-stem) or htdemucs_ft (fine-tuned 4-stem) or htdemucs_6s (6-stem)",
+    ),
+    shifts: int = Form(1, description="Number of time-shift augmentations"),
 ):
     """
     Separate a file already uploaded to storage/uploaded/
@@ -194,7 +213,9 @@ async def separate_by_name(
     try:
         # Run separation - save results to separated_dir
         separator = DrumSeparator(model_name=model)
-        results = separator.separate(temp_file, separated_dir, chunk_duration=chunk_duration, shifts=shifts)
+        results = separator.separate(
+            temp_file, separated_dir, chunk_duration=chunk_duration, shifts=shifts
+        )
 
         processing_time = time.time() - start_time
 
@@ -216,12 +237,21 @@ async def separate_by_name(
         raise HTTPException(500, f"Separation failed: {str(e)}")
 
 
-@router.post("/separate_by_name_stream", summary="Separate uploaded file (streaming progress)")
+@router.post(
+    "/separate_by_name_stream", summary="Separate uploaded file (streaming progress)"
+)
+@separation_limit
 async def separate_by_name_stream(
+    request: Request,
     filename: str = Form(..., description="File name to separate"),
-    chunk_duration: float = Form(30.0, description="Chunk processing duration (seconds)"),
-    model: str = Form("htdemucs", description="Separation model: htdemucs (4-stem) or htdemucs_ft (fine-tuned 4-stem) or htdemucs_6s (6-stem)"),
-    shifts: int = Form(1, description="Number of time-shift augmentations")
+    chunk_duration: float = Form(
+        30.0, description="Chunk processing duration (seconds)"
+    ),
+    model: str = Form(
+        "htdemucs",
+        description="Separation model: htdemucs (4-stem) or htdemucs_ft (fine-tuned 4-stem) or htdemucs_6s (6-stem)",
+    ),
+    shifts: int = Form(1, description="Number of time-shift augmentations"),
 ):
     """
     Separate a file already uploaded to storage/uploaded/ with SSE streaming progress
@@ -275,7 +305,7 @@ async def separate_by_name_stream(
                 "current": current,
                 "total": total,
                 "message": message,
-                "percentage": round((current / total) * 100, 1) if total > 0 else 0
+                "percentage": round((current / total) * 100, 1) if total > 0 else 0,
             }
             progress_queue.put(json.dumps(progress_data))
 
@@ -289,7 +319,7 @@ async def separate_by_name_stream(
                     separated_dir,
                     chunk_duration=chunk_duration,
                     shifts=shifts,
-                    progress_callback=progress_callback
+                    progress_callback=progress_callback,
                 )
                 separation_result = results
             except Exception as e:
@@ -300,6 +330,7 @@ async def separate_by_name_stream(
 
         # Run the blocking separation in thread pool
         import concurrent.futures
+
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future = executor.submit(run_separation)
 
@@ -341,7 +372,7 @@ async def separate_by_name_stream(
                 "stage": "error",
                 "status": "error",
                 "message": str(separation_error),
-                "percentage": 0
+                "percentage": 0,
             }
             yield f"data: {json.dumps(error_data)}\n\n"
         else:
@@ -358,7 +389,7 @@ async def separate_by_name_stream(
                 "processing_time": round(processing_time, 2),
                 "output_dir": str(separated_dir),
                 "files": separation_result,
-                "percentage": 100
+                "percentage": 100,
             }
             yield f"data: {json.dumps(completion_data)}\n\n"
 
@@ -369,5 +400,5 @@ async def separate_by_name_stream(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # Disable nginx buffering
-        }
+        },
     )

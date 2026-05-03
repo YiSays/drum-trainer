@@ -2,7 +2,7 @@
 YouTube download and separation endpoint
 """
 
-from fastapi import APIRouter, HTTPException, Body, Form
+from fastapi import APIRouter, HTTPException, Body, Form, Request
 from fastapi.responses import JSONResponse, FileResponse
 from pathlib import Path
 from typing import Optional, Dict
@@ -10,6 +10,7 @@ import json
 import shutil
 
 from api.config import get_storage_dir
+from api.rate_limiter import youtube_limit
 from core.youtube_downloader import YouTubeDownloader
 from core.separator import DrumSeparator
 from core.audio_io import AudioIO
@@ -21,9 +22,14 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @router.post("/download", summary="Download YouTube audio")
+@youtube_limit
 async def download_youtube_audio(
-    url: str = Body(..., description="YouTube video URL (supports various formats including URLs with playlist parameters)"),
-    name: Optional[str] = Body(None, description="Output filename (optional)")
+    request: Request,
+    url: str = Body(
+        ...,
+        description="YouTube video URL (supports various formats including URLs with playlist parameters)",
+    ),
+    name: Optional[str] = Body(None, description="Output filename (optional)"),
 ):
     """
     Download audio from YouTube and save to storage/uploaded/
@@ -42,7 +48,7 @@ async def download_youtube_audio(
         return {
             "status": "success",
             "message": "Audio downloaded successfully",
-            "data": result
+            "data": result,
         }
 
     except ValueError as e:
@@ -52,11 +58,16 @@ async def download_youtube_audio(
 
 
 @router.post("/separate", summary="Download and separate YouTube audio")
+@youtube_limit
 async def separate_youtube_audio(
+    request: Request,
     url: str = Body(..., description="YouTube video URL"),
     name: Optional[str] = Body(None, description="Output filename (optional)"),
     chunk_size: int = Body(30, description="Audio chunk duration in seconds"),
-    model: str = Body("htdemucs_6s", description="Separation model: htdemucs_6s (6-stem) or htdemucs (4-stem)")
+    model: str = Body(
+        "htdemucs_6s",
+        description="Separation model: htdemucs_6s (6-stem) or htdemucs (4-stem)",
+    ),
 ):
     """
     Download audio from YouTube and perform drum separation.
@@ -96,9 +107,7 @@ async def separate_youtube_audio(
                 print(f"Long audio ({duration}s), will process in chunks...")
 
             separator.separate(
-                audio_path=temp_file,
-                output_dir=separated_dir,
-                chunk_size=chunk_size
+                audio_path=temp_file, output_dir=separated_dir, chunk_size=chunk_size
             )
 
             print("Step 4: Collecting separated results")
@@ -151,21 +160,19 @@ async def list_uploaded_files():
                     audio_io = AudioIO()
                     info = audio_io.get_audio_info(file_path)
 
-                    files.append({
-                        "name": file_path.name,
-                        "path": str(file_path.relative_to(UPLOAD_DIR.parent)),
-                        "size": file_path.stat().st_size,
-                        "duration": info["duration"],
-                        "samplerate": info["samplerate"],
-                        "channels": info["channels"],
-                        "extension": file_path.suffix[1:],
-                    })
+                    files.append(
+                        {
+                            "name": file_path.name,
+                            "path": str(file_path.relative_to(UPLOAD_DIR.parent)),
+                            "size": file_path.stat().st_size,
+                            "duration": info["duration"],
+                            "samplerate": info["samplerate"],
+                            "channels": info["channels"],
+                            "extension": file_path.suffix[1:],
+                        }
+                    )
                 except Exception:
                     continue
 
     files.sort(key=lambda x: x["name"])
-    return {
-        "status": "success",
-        "count": len(files),
-        "files": files
-    }
+    return {"status": "success", "count": len(files), "files": files}

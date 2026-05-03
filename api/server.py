@@ -7,14 +7,26 @@ Smart Drum Separation & Music Analysis Service
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from pathlib import Path
 import torch
 import shutil
 import asyncio
 from datetime import datetime, timedelta
 
-# Import endpoints
-from api.endpoints import separation, analysis, generation, tracks, youtube, transcription, demo, transcription_ast, transcription_torch
+from api.rate_limiter import limiter, rate_limit_exceeded_handler
+from api.endpoints import (
+    separation,
+    analysis,
+    generation,
+    tracks,
+    youtube,
+    transcription,
+    demo,
+    transcription_ast,
+    transcription_torch,
+)
 from api.models import HealthResponse
 from api.config import get_storage_dir
 
@@ -43,11 +55,12 @@ app = FastAPI(
     - Cross-platform Support
     """,
     version="0.1.0",
-    contact={
-        "name": "Drum Trainer Team",
-        "url": "https://github.com/your-repo"
-    }
+    contact={"name": "Drum Trainer Team", "url": "https://github.com/your-repo"},
 )
+
+# Rate limiting
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 # CORS middleware
 app.add_middleware(
@@ -57,6 +70,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(SlowAPIMiddleware)
 
 # Register endpoints
 app.include_router(separation.router)
@@ -74,6 +89,7 @@ app.include_router(demo.router)
 # Cleanup Utilities
 # ============================================
 
+
 def cleanup_old_uploads(max_age_hours: int = CLEANUP_AGE_HOURS) -> dict:
     """
     Clean up old files in storage/uploaded/ and storage/uploaded/separated/
@@ -90,7 +106,7 @@ def cleanup_old_uploads(max_age_hours: int = CLEANUP_AGE_HOURS) -> dict:
         "deleted_dirs": [],
         "kept_files": [],
         "errors": [],
-        "total_deleted_size": 0
+        "total_deleted_size": 0,
     }
 
     # Ensure directories exist
@@ -187,11 +203,7 @@ async def manual_cleanup(max_age_hours: int = 24):
         max_age_hours: How many hours of files to keep, default 24 hours
     """
     stats = cleanup_old_uploads(max_age_hours)
-    return {
-        "status": "success",
-        "message": "Cleanup complete",
-        **stats
-    }
+    return {"status": "success", "message": "Cleanup complete", **stats}
 
 
 @app.get("/", summary="Root endpoint", response_model=HealthResponse)
@@ -199,11 +211,16 @@ async def root():
     """
     API service status check
     """
-    device = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
+    device = (
+        "mps"
+        if torch.backends.mps.is_available()
+        else ("cuda" if torch.cuda.is_available() else "cpu")
+    )
 
     # Check if core libraries are available
     try:
         import demucs
+
         model_loaded = True
     except:
         model_loaded = False
@@ -214,7 +231,7 @@ async def root():
         "device": device,
         "model_loaded": model_loaded,
         "default_model": "htdemucs",
-        "shifts": 1
+        "shifts": 1,
     }
 
 
@@ -246,7 +263,9 @@ async def download_file(file_path: str):
     return FileResponse(
         path=full_path,
         filename=full_path.name,
-        media_type="audio/wav" if full_path.suffix in [".wav", ".mp3"] else "application/octet-stream"
+        media_type="audio/wav"
+        if full_path.suffix in [".wav", ".mp3"]
+        else "application/octet-stream",
     )
 
 
@@ -295,6 +314,7 @@ async def upload_preview(file: UploadFile = File(...)):
     try:
         with open(saved_path, "wb") as buffer:
             import shutil
+
             shutil.copyfileobj(file.file, buffer)
     finally:
         file.file.close()
@@ -314,7 +334,7 @@ async def upload_preview(file: UploadFile = File(...)):
                 "duration": info["duration"],
                 "samplerate": info["samplerate"],
                 "channels": info["channels"],
-            }
+            },
         }
 
     except Exception as e:
@@ -329,7 +349,9 @@ async def info():
     """Get system information"""
     info = {
         "torch_version": torch.__version__,
-        "device": "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu"),
+        "device": "mps"
+        if torch.backends.mps.is_available()
+        else ("cuda" if torch.cuda.is_available() else "cpu"),
         "metal_available": torch.backends.mps.is_available(),
         "cuda_available": torch.cuda.is_available(),
         "python_version": "3.10+",
@@ -364,7 +386,7 @@ async def serve_ui_index():
                 "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
                 "Pragma": "no-cache",
                 "Expires": "0",
-            }
+            },
         )
 
 
@@ -381,7 +403,7 @@ async def serve_ui_css():
             media_type="text/css",
             headers={
                 "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            }
+            },
         )
 
 
@@ -398,7 +420,7 @@ async def serve_ui_js():
             media_type="application/javascript",
             headers={
                 "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            }
+            },
         )
 
 
@@ -414,7 +436,7 @@ async def serve_test_bench_html():
             content=f.read(),
             headers={
                 "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            }
+            },
         )
 
 
@@ -431,12 +453,14 @@ async def serve_test_bench_js():
             media_type="application/javascript",
             headers={
                 "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            }
+            },
         )
 
 
 @app.get("/ui/test_bench_v2.html", response_class=HTMLResponse, include_in_schema=False)
-@app.get("/web_ui/test_bench_v2.html", response_class=HTMLResponse, include_in_schema=False)
+@app.get(
+    "/web_ui/test_bench_v2.html", response_class=HTMLResponse, include_in_schema=False
+)
 async def serve_test_bench_v2_html():
     """Serve Test Bench v2 UI page"""
     path = WEB_UI_DIR / "test_bench_v2.html"
@@ -448,12 +472,16 @@ async def serve_test_bench_v2_html():
             content=f.read(),
             headers={
                 "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            }
+            },
         )
 
 
-@app.get("/ui/js/test_bench_v2.js", response_class=HTMLResponse, include_in_schema=False)
-@app.get("/web_ui/js/test_bench_v2.js", response_class=HTMLResponse, include_in_schema=False)
+@app.get(
+    "/ui/js/test_bench_v2.js", response_class=HTMLResponse, include_in_schema=False
+)
+@app.get(
+    "/web_ui/js/test_bench_v2.js", response_class=HTMLResponse, include_in_schema=False
+)
 async def serve_test_bench_v2_js():
     """Serve Test Bench v2 JavaScript file"""
     path = WEB_UI_DIR / "js" / "test_bench_v2.js"
@@ -466,7 +494,7 @@ async def serve_test_bench_v2_js():
             media_type="application/javascript",
             headers={
                 "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            }
+            },
         )
 
 
@@ -483,7 +511,7 @@ async def serve_test_bench_v3_html():
             content=f.read(),
             headers={
                 "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            }
+            },
         )
 
 
@@ -517,9 +545,5 @@ if __name__ == "__main__":
     print("=" * 60)
 
     uvicorn.run(
-        "api.server:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level="info"
+        "api.server:app", host="0.0.0.0", port=8000, reload=True, log_level="info"
     )

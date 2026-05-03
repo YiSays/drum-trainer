@@ -2,7 +2,15 @@
 Generation Endpoint - Drum Performance Generation (uses V2 analyzer with beat detection)
 """
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
+from fastapi import (
+    APIRouter,
+    UploadFile,
+    File,
+    Form,
+    HTTPException,
+    BackgroundTasks,
+    Request,
+)
 from pathlib import Path
 import tempfile
 import shutil
@@ -16,6 +24,7 @@ from core.music_analyzer import MusicAnalyzer
 from core.drum_generator import DrumGenerator
 from core.audio_io import AudioIO
 from api.config import get_storage_dir
+from api.rate_limiter import separation_limit
 
 router = APIRouter(prefix="/generation", tags=["Generation"])
 
@@ -37,7 +46,7 @@ async def generate_drums(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="Audio file"),
     style_hint: str = Form(None, description="Style hint (e.g., rock, jazz)"),
-    complexity: float = Form(0.5, description="Complexity (0.0 - 1.0)", ge=0.0, le=1.0)
+    complexity: float = Form(0.5, description="Complexity (0.0 - 1.0)", ge=0.0, le=1.0),
 ):
     """
     Smart drum performance generation (fully automatic mode)
@@ -57,7 +66,9 @@ async def generate_drums(
     temp_files = []
 
     # Save uploaded file
-    temp_audio = TEMP_DIR / f"gen_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.filename}"
+    temp_audio = (
+        TEMP_DIR / f"gen_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.filename}"
+    )
     temp_files.append(temp_audio)
     try:
         with open(temp_audio, "wb") as buffer:
@@ -121,22 +132,25 @@ async def generate_drums(
                 "structure": analysis["structure"],
                 "rhythm_profile": analysis["rhythm_profile"],
                 # New: beat detection info
-                "time_signature": analysis.get("time_signature", {"numerator": 4, "denominator": 4, "confidence": 0.0}),
+                "time_signature": analysis.get(
+                    "time_signature",
+                    {"numerator": 4, "denominator": 4, "confidence": 0.0},
+                ),
                 "downbeats": analysis.get("downbeats", []),
                 "beats": analysis.get("beats", []),
-                "beat_positions": analysis.get("beat_positions", [])
+                "beat_positions": analysis.get("beat_positions", []),
             },
             "generated": {
                 "pattern": drum_track.pattern,
                 "bpm": drum_track.bpm,
-                "sections": drum_track.sections
+                "sections": drum_track.sections,
             },
             "files": {
                 "generated_drums": str(output_subdir / "generated_drums.wav"),
                 "original_with_drums": str(mixed_path),
-                "generated": str(output_subdir / "generated_drums.wav")
+                "generated": str(output_subdir / "generated_drums.wav"),
             },
-            "processing_time": round(processing_time, 2)
+            "processing_time": round(processing_time, 2),
         }
 
         # Clean up temporary files
@@ -151,12 +165,19 @@ async def generate_drums(
 
 
 @router.post("/process", summary="Full pipeline (recommended)")
+@separation_limit
 async def process_complete(
+    request: Request,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    chunk_duration: float = Form(30.0, description="Separation processing duration (seconds)"),
-    model: str = Form("htdemucs", description="Separation model: htdemucs (4-stem) or htdemucs_ft (fine-tuned 4-stem) or htdemucs_6s (6-stem)"),
-    shifts: int = Form(1, description="Number of time-shift augmentations")
+    chunk_duration: float = Form(
+        30.0, description="Separation processing duration (seconds)"
+    ),
+    model: str = Form(
+        "htdemucs",
+        description="Separation model: htdemucs (4-stem) or htdemucs_ft (fine-tuned 4-stem) or htdemucs_6s (6-stem)",
+    ),
+    shifts: int = Form(1, description="Number of time-shift augmentations"),
 ):
     """
     Full processing pipeline (one-stop API)
@@ -180,7 +201,10 @@ async def process_complete(
     temp_files = []
 
     # Save file
-    temp_audio = TEMP_DIR / f"complete_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.filename}"
+    temp_audio = (
+        TEMP_DIR
+        / f"complete_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.filename}"
+    )
     temp_files.append(temp_audio)
     try:
         with open(temp_audio, "wb") as buffer:
@@ -189,14 +213,19 @@ async def process_complete(
         file.file.close()
 
     try:
-        output_subdir = OUTPUT_DIR / f"complete_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        output_subdir = (
+            OUTPUT_DIR / f"complete_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        )
         output_subdir.mkdir(parents=True, exist_ok=True)
 
         # 1. Separation
         print("🔪 Step 1: Separating drums...")
         from core.separator import DrumSeparator
+
         separator = DrumSeparator(model_name=model)
-        separated_files = separator.separate(temp_audio, output_subdir / "separated", chunk_duration, shifts=shifts)
+        separated_files = separator.separate(
+            temp_audio, output_subdir / "separated", chunk_duration, shifts=shifts
+        )
 
         # 2. Analysis
         print("📊 Step 2: Music analysis...")
@@ -206,7 +235,9 @@ async def process_complete(
         # 3. Generation
         print("🥁 Step 3: Generating drum performance...")
         generator = DrumGenerator()
-        drum_track = generator.generate_from_analysis(analysis, output_subdir / "generated")
+        drum_track = generator.generate_from_analysis(
+            analysis, output_subdir / "generated"
+        )
 
         # 4. Mixing (original + generated drums)
         audio_io = AudioIO()
@@ -232,17 +263,14 @@ async def process_complete(
             "status": "success",
             "message": "Full pipeline complete",
             "analysis": analysis,
-            "generated": {
-                "pattern": drum_track.pattern,
-                "bpm": drum_track.bpm
-            },
+            "generated": {"pattern": drum_track.pattern, "bpm": drum_track.bpm},
             "files": {
                 **separated_files,  # Demucs separated
                 "generated_drums": str(output_subdir / "generated_drums.wav"),
                 "original_with_generated_drums": str(mixed_path),
-                "rhythm_info": str(output_subdir / "generated" / "rhythm_info.json")
+                "rhythm_info": str(output_subdir / "generated" / "rhythm_info.json"),
             },
-            "processing_time": round(processing_time, 2)
+            "processing_time": round(processing_time, 2),
         }
 
         background_tasks.add_task(cleanup_temp_files, temp_files)
