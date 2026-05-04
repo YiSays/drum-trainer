@@ -1282,7 +1282,8 @@ const loadTracks = async (options = {}) => {
                 el.uploadPanel.classList.remove('hidden');
                 if (el.uploadBtn) {
                     el.uploadBtn.disabled = false;
-                    el.uploadBtn.textContent = '+ Upload';
+                    el.uploadBtn.innerHTML = '<span>+</span>';
+                    el.uploadBtn.title = 'Upload new track (U)';
                 }
                 state.uploadVisible = true;
                 state.uploadLocked = false;
@@ -1299,7 +1300,8 @@ const loadTracks = async (options = {}) => {
             state.uploadLocked = true;
             if (el.uploadBtn) {
                 el.uploadBtn.disabled = true;
-                el.uploadBtn.textContent = 'Processed';
+                el.uploadBtn.innerHTML = '<span>✓</span>';
+                el.uploadBtn.title = 'Already processed';
             }
         }
         const originalFile = data.find(track => !track.is_separated);
@@ -1558,7 +1560,8 @@ const clearSelection = async () => {
         el.uploadPanel.classList.remove('hidden');
         if (el.uploadBtn) {
             el.uploadBtn.disabled = false;
-            el.uploadBtn.textContent = '+ Upload';
+            el.uploadBtn.innerHTML = '<span>+</span>';
+            el.uploadBtn.title = 'Upload new track (U)';
         }
         state.uploadVisible = true;
         state.uploadLocked = false;
@@ -1592,7 +1595,8 @@ const uploadFileForPreview = async (file) => {
     state.isUploading = true;
     if (el.uploadBtn) {
         el.uploadBtn.disabled = true;
-        el.uploadBtn.textContent = '⏳ Uploading';
+        el.uploadBtn.innerHTML = '<span>⏳</span>';
+        el.uploadBtn.title = 'Uploading...';
     }
     const formData = new FormData();
     formData.append('file', file);
@@ -1629,7 +1633,8 @@ const uploadFileForPreview = async (file) => {
         state.processingType = null;
         if (el.uploadBtn) {
             el.uploadBtn.disabled = false;
-            el.uploadBtn.textContent = '+ Upload';
+            el.uploadBtn.innerHTML = '<span>+</span>';
+            el.uploadBtn.title = 'Upload new track (U)';
         }
     }
 };

@@ -378,7 +378,7 @@ body {
 }
 
 .upload-dropzone {
-    padding: var(--space-lg);
+    padding: var(--space-md);
     text-align: center;
     border: 2px dashed var(--glass-border);
     border-radius: var(--radius-md);
@@ -412,8 +412,8 @@ body {
 }
 
 .drop-icon {
-    font-size: 3rem;
-    margin-bottom: var(--space-sm);
+    font-size: 2rem;
+    margin-bottom: var(--space-xs);
     opacity: 0.8;
 }
 
