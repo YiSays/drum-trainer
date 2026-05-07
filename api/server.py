@@ -27,6 +27,7 @@ from api.endpoints import (
     transcription_ast,
     transcription_torch,
 )
+from api.endpoints.visits import router as visits_router
 from api.models import HealthResponse
 from api.config import get_storage_dir
 
@@ -83,6 +84,7 @@ app.include_router(transcription.router)
 app.include_router(transcription_ast.router)
 app.include_router(transcription_torch.router)
 app.include_router(demo.router)
+app.include_router(visits_router)
 
 
 # ============================================
@@ -167,6 +169,7 @@ async def startup_event():
     # Create directories if they don't exist
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     SEPARATED_DIR.mkdir(parents=True, exist_ok=True)
+    (get_storage_dir() / "analytics").mkdir(parents=True, exist_ok=True)
 
     # Clean up old files
     try:
