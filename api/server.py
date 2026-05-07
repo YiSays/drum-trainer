@@ -4,7 +4,7 @@ FastAPI Main Server
 Smart Drum Separation & Music Analysis Service
 """
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi import FastAPI, Request, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from slowapi.errors import RateLimitExceeded
@@ -15,7 +15,7 @@ import shutil
 import asyncio
 from datetime import datetime, timedelta
 
-from api.rate_limiter import limiter, rate_limit_exceeded_handler
+from api.rate_limiter import limiter, rate_limit_exceeded_handler, get_client_ip
 from api.endpoints import (
     separation,
     analysis,
@@ -27,7 +27,7 @@ from api.endpoints import (
     transcription_ast,
     transcription_torch,
 )
-from api.endpoints.visits import router as visits_router
+from api.endpoints.visits import router as visits_router, visits_tracker
 from api.models import HealthResponse
 from api.config import get_storage_dir
 
@@ -374,8 +374,9 @@ WEB_UI_DIR = Path("web_ui")
 
 
 @app.get("/ui", response_class=HTMLResponse, include_in_schema=False)
-async def serve_ui_index():
+async def serve_ui_index(request: Request):
     """Serve the main web UI page"""
+    visits_tracker.record_visit(get_client_ip(request))
     index_path = WEB_UI_DIR / "index.html"
     if not index_path.exists():
         raise HTTPException(404, "Web UI not found. Run setup first.")

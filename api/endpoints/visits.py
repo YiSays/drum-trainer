@@ -9,11 +9,10 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from api.config import get_storage_dir
-from api.rate_limiter import get_client_ip
 
 
 class VisitStats(BaseModel):
@@ -107,12 +106,6 @@ router = APIRouter(prefix="/visits", tags=["Visits"])
 visits_tracker = VisitsTracker()
 
 
-@router.get("", summary="Get visit stats (does not count)")
+@router.get("", summary="Get visit stats")
 async def get_visits() -> dict:
     return visits_tracker.get_stats()
-
-
-@router.post("", summary="Record a page visit and return stats")
-async def record_visit(request: Request) -> dict:
-    client_ip = get_client_ip(request)
-    return visits_tracker.record_visit(client_ip)

@@ -2161,8 +2161,6 @@ const init = async () => {
     }
     setupEventListeners();
     setupKeyboardShortcuts();
-    // Record page visit (fire-and-forget)
-    fetch(`${API_BASE_URL}/visits`, { method: 'POST' }).catch(() => {});
     const connected = await checkApiConnection();
     if (connected) {
         await loadTracks();
