@@ -107,6 +107,11 @@ router = APIRouter(prefix="/visits", tags=["Visits"])
 visits_tracker = VisitsTracker()
 
 
+@router.get("", summary="Get visit stats (does not count)")
+async def get_visits() -> dict:
+    return visits_tracker.get_stats()
+
+
 @router.post("", summary="Record a page visit and return stats")
 async def record_visit(request: Request) -> dict:
     client_ip = get_client_ip(request)
